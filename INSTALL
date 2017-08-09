@@ -1,0 +1,16 @@
+sudo gdebi -n encycmw-master_VERSION_amd64.deb
+
+# MediaWiki
+sudo mkdir /etc/encyc/
+sudo cp /opt/encyc-mw/conf/LocalSettings.php-1.24 /etc/encyc/
+sudo ln -s /etc/encyc/LocalSettings.php-1.24 /opt/encyc-mw/htdocs/LocalSettings.php-1.24
+
+# PHP-FPM (set to run on port 9000)
+sudo cp /etc/php5/fpm/pool.d/www.conf /etc/php5/fpm/pool.d/www.conf.orig
+sudo cp /opt/encyc-mw/conf/php-fpm-pool.d-www.conf /etc/php5/fpm/pool.d/www.conf
+sudo service php5-fpm restart
+
+# Nginx
+sudo cp /opt/encyc-mw/conf/nginx.conf /etc/nginx/sites-available/encycmw.conf
+sudo ln -s /etc/nginx/sites-available/encycmw.conf /etc/nginx/sites-enabled/encycmw.conf
+sudo service nginx restart
