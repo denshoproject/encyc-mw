@@ -1,4 +1,5 @@
 *~
 *.deb
 LocalSettings.php-1.24
+htdocs/LocalSettings.php
 images/
