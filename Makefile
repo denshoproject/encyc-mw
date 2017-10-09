@@ -67,8 +67,6 @@ deb:
 	.git=$(FPM_BASE)   \
 	.gitignore=$(FPM_BASE)   \
 	conf=$(FPM_BASE)   \
-	conf/LocalSettings.php-1.24=etc/encyc/LocalSettings.php-1.24   \
-	conf/nginx.conf=etc/nginx/sites-available/encycmw.conf   \
 	htdocs=$(FPM_BASE)   \
 	INSTALL=$(FPM_BASE)   \
 	Makefile=$(FPM_BASE)   \
