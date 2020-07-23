@@ -44,6 +44,72 @@ help:
 	@echo "TODO encyc-mw install help"
 
 
+install: install-prep install-app install-static install-configs
+
+test: test-app
+
+uninstall: uninstall-front
+
+clean: clean-front
+
+
+install-daemons: install-nginx
+
+install-nginx:
+	@echo ""
+	@echo "Nginx ------------------------------------------------------------------"
+	apt-get --assume-yes install nginx
+
+
+install-app: install-encyc-mw
+
+test-app: test-encyc-mw
+
+uninstall-app: uninstall-encyc-mw
+
+clean-app: clean-encyc-mw
+
+
+install-encyc-mw:
+	@echo ""
+	@echo "encyc-mw --------------------------------------------------------------"
+	apt-get --assume-yes install imagemagick libjpeg-turbo-progs nginx php-pear php-cgi php-cli php-fpm php-mysql tidy
+
+test-encyc-mw:
+
+uninstall-encyc-mw:
+	apt-get --assume-yes remove imagemagick libjpeg-turbo-progs php-pear php-fpm php-mysql tidy
+
+clean-encyc-mw:
+
+
+install-configs:
+	@echo ""
+	@echo "installing configs ----------------------------------------------------"
+# web app settings
+	ln -s $(INSTALLDIR)/conf/LocalSettings.php-1.24 /opt/encyc-mw/htdocs/LocalSettings.php
+# 	chown root.encyc /opt/encyc-mw/htdocs/LocalSettings.php-1.24
+# 	chmod 640 /opt/encyc-mw/htdocs/LocalSettings.php-1.24
+
+install-daemon-configs:
+	@echo ""
+	@echo "installing daemon configs ---------------------------------------------"
+# php-fpm settings
+	cp $(INSTALLDIR)/conf/www.conf /etc/php/7.3/fpm/pool.d/www.conf
+	chown root.root /etc/php/7.3/fpm/pool.d/www.conf
+	chmod 644 /etc/php/7.3/fpm/pool.d/www.conf
+# nginx settings
+	cp $(INSTALLDIR)/conf/nginx.conf /etc/nginx/sites-available/encycmw.conf
+	chown root.root /etc/nginx/sites-available/encycmw.conf
+	chmod 644 /etc/nginx/sites-available/encycmw.conf
+	-ln -s /etc/nginx/sites-available/encycmw.conf /etc/nginx/sites-enabled/encycmw.conf
+	-rm /etc/nginx/sites-enabled/default
+
+uninstall-daemon-configs:
+	-rm /etc/nginx/sites-available/encycmw.conf
+	-rm /etc/nginx/sites-enabled/encycmw.conf
+
+
 # http://fpm.readthedocs.io/en/latest/
 # https://stackoverflow.com/questions/32094205/set-a-custom-install-directory-when-making-a-deb-package-with-fpm
 # https://brejoc.com/tag/fpm/
