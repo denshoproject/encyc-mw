@@ -46,8 +46,8 @@
 class VirtualRESTServiceClient {
 	/** @var MultiHttpClient */
 	protected $http;
-	/** @var Array Map of (prefix => VirtualRESTService) */
-	protected $instances = array();
+	/** @var VirtualRESTService[] Map of (prefix => VirtualRESTService) */
+	protected $instances = [];
 
 	const VALID_MOUNT_REGEX = '#^/[0-9a-z]+/([0-9a-z]+/)*$#';
 
@@ -103,7 +103,7 @@ class VirtualRESTServiceClient {
 			return ( $al < $bl ) ? 1 : -1; // largest prefix first
 		};
 
-		$matches = array(); // matching prefixes (mount points)
+		$matches = []; // matching prefixes (mount points)
 		foreach ( $this->instances as $prefix => $service ) {
 			if ( strpos( $path, $prefix ) === 0 ) {
 				$matches[] = $prefix;
@@ -113,8 +113,8 @@ class VirtualRESTServiceClient {
 
 		// Return the most specific prefix and corresponding service
 		return isset( $matches[0] )
-			? array( $matches[0], $this->instances[$matches[0]] )
-			: array( null, null );
+			? [ $matches[0], $this->instances[$matches[0]] ]
+			: [ null, null ];
 	}
 
 	/**
@@ -125,17 +125,16 @@ class VirtualRESTServiceClient {
 	 *   - reason  : HTTP response reason (empty if there was a serious cURL error)
 	 *   - headers : <header name/value associative array>
 	 *   - body    : HTTP response body or resource (if "stream" was set)
-	 *   - err     : Any cURL error string
+	 *   - error   : Any cURL error string
 	 * The map also stores integer-indexed copies of these values. This lets callers do:
-	 *	<code>
-	 *		list( $rcode, $rdesc, $rhdrs, $rbody, $rerr ) = $client->run( $req );
-	 *  </code>
-	 * @param array $req Virtual HTTP request array
+	 * @code
+	 *     list( $rcode, $rdesc, $rhdrs, $rbody, $rerr ) = $client->run( $req );
+	 * @endcode
+	 * @param array $req Virtual HTTP request maps
 	 * @return array Response array for request
 	 */
 	public function run( array $req ) {
-		$req = $this->runMulti( array( $req ) );
-		return $req[0]['response'];
+		return $this->runMulti( [ $req ] )[0];
 	}
 
 	/**
@@ -146,14 +145,15 @@ class VirtualRESTServiceClient {
 	 *   - reason  : HTTP response reason (empty if there was a serious cURL error)
 	 *   - headers : <header name/value associative array>
 	 *   - body    : HTTP response body or resource (if "stream" was set)
-	 *   - err     : Any cURL error string
+	 *   - error   : Any cURL error string
 	 * The map also stores integer-indexed copies of these values. This lets callers do:
-	 *	<code>
-	 *		list( $rcode, $rdesc, $rhdrs, $rbody, $rerr ) = $responses[0];
-	 *  </code>
+	 * @code
+	 *     list( $rcode, $rdesc, $rhdrs, $rbody, $rerr ) = $responses[0];
+	 * @endcode
 	 *
-	 * @param array $req Map of Virtual HTTP request arrays
+	 * @param array $reqs Map of Virtual HTTP request maps
 	 * @return array $reqs Map of corresponding response values with the same keys/order
+	 * @throws Exception
 	 */
 	public function runMulti( array $reqs ) {
 		foreach ( $reqs as $index => &$req ) {
@@ -165,17 +165,17 @@ class VirtualRESTServiceClient {
 				$req['url'] = $req[1]; // short-form
 				unset( $req[1] );
 			}
-			$req['chain'] = array(); // chain or list of replaced requests
+			$req['chain'] = []; // chain or list of replaced requests
 		}
 		unset( $req ); // don't assign over this by accident
 
 		$curUniqueId = 0;
-		$armoredIndexMap = array(); // (original index => new index)
+		$armoredIndexMap = []; // (original index => new index)
 
-		$doneReqs = array(); // (index => request)
-		$executeReqs = array(); // (index => request)
-		$replaceReqsByService = array(); // (prefix => index => request)
-		$origPending = array(); // (index => 1) for original requests
+		$doneReqs = []; // (index => request)
+		$executeReqs = []; // (index => request)
+		$replaceReqsByService = []; // (prefix => index => request)
+		$origPending = []; // (index => 1) for original requests
 
 		foreach ( $reqs as $origIndex => $req ) {
 			// Re-index keys to consecutive integers (they will be swapped back later)
@@ -207,11 +207,14 @@ class VirtualRESTServiceClient {
 			if ( ++$rounds > 5 ) { // sanity
 				throw new Exception( "Too many replacement rounds detected. Aborting." );
 			}
+			// Track requests executed this round that have a prefix/service.
+			// Note that this also includes requests where 'response' was forced.
+			$checkReqIndexesByPrefix = [];
 			// Resolve the virtual URLs valid and qualified HTTP(S) URLs
 			// and add any required authentication headers for the backend.
 			// Services can also replace requests with new ones, either to
 			// defer the original or to set a proxy response to the original.
-			$newReplaceReqsByService = array();
+			$newReplaceReqsByService = [];
 			foreach ( $replaceReqsByService as $prefix => $servReqs ) {
 				$service = $this->instances[$prefix];
 				foreach ( $service->onRequests( $servReqs, $idFunc ) as $index => $req ) {
@@ -219,7 +222,7 @@ class VirtualRESTServiceClient {
 					if ( isset( $servReqs[$index] ) || isset( $origPending[$index] ) ) {
 						// A current or original request which was not modified
 					} else {
-						// Replacement requests with pre-set responses should not execute
+						// Replacement request that will convert to original requests
 						$newReplaceReqsByService[$prefix][$index] = $req;
 					}
 					if ( isset( $req['response'] ) ) {
@@ -231,6 +234,7 @@ class VirtualRESTServiceClient {
 						// Original or mangled request included
 						$executeReqs[$index] = $req;
 					}
+					$checkReqIndexesByPrefix[$prefix][$index] = 1;
 				}
 			}
 			// Update index of requests to inspect for replacement
@@ -240,17 +244,17 @@ class VirtualRESTServiceClient {
 				$doneReqs[$index] = $ranReq;
 				unset( $origPending[$index] );
 			}
-			$executeReqs = array();
+			$executeReqs = [];
 			// Services can also replace requests with new ones, either to
 			// defer the original or to set a proxy response to the original.
 			// Any replacement requests executed above will need to be replaced
 			// with new requests (eventually the original). The responses can be
-			// forced instead of having the request sent over the wire.
-			$newReplaceReqsByService = array();
-			foreach ( $replaceReqsByService as $prefix => $servReqs ) {
+			// forced by setting 'response' rather than actually be sent over the wire.
+			$newReplaceReqsByService = [];
+			foreach ( $checkReqIndexesByPrefix as $prefix => $servReqIndexes ) {
 				$service = $this->instances[$prefix];
-				// Only the request copies stored in $doneReqs actually have the response
-				$servReqs = array_intersect_key( $doneReqs, $servReqs );
+				// $doneReqs actually has the requests (with 'response' set)
+				$servReqs = array_intersect_key( $doneReqs, $servReqIndexes );
 				foreach ( $service->onResponses( $servReqs, $idFunc ) as $index => $req ) {
 					// Services use unique IDs for replacement requests
 					if ( isset( $servReqs[$index] ) || isset( $origPending[$index] ) ) {
@@ -273,7 +277,7 @@ class VirtualRESTServiceClient {
 			$replaceReqsByService = $newReplaceReqsByService;
 		} while ( count( $origPending ) );
 
-		$responses = array();
+		$responses = [];
 		// Update $reqs to include 'response' and normalized request 'headers'.
 		// This maintains the original order of $reqs.
 		foreach ( $reqs as $origIndex => $req ) {

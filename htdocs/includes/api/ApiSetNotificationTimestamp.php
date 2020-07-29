@@ -46,7 +46,8 @@ class ApiSetNotificationTimestamp extends ApiBase {
 		$params = $this->extractRequestParams();
 		$this->requireMaxOneParameter( $params, 'timestamp', 'torevid', 'newerthanrevid' );
 
-		$this->getResult()->beginContinuation( $params['continue'], array(), array() );
+		$continuationManager = new ApiContinuationManager( $this, [], [] );
+		$this->setContinuationManager( $continuationManager );
 
 		$pageSet = $this->getPageSet();
 		if ( $params['entirewatchlist'] && $pageSet->getDataSource() !== null ) {
@@ -73,7 +74,8 @@ class ApiSetNotificationTimestamp extends ApiBase {
 			}
 			$title = reset( $pageSet->getGoodTitles() );
 			if ( $title ) {
-				$timestamp = Revision::getTimestampFromId( $title, $params['torevid'] );
+				$timestamp = Revision::getTimestampFromId(
+					$title, $params['torevid'], Revision::READ_LATEST );
 				if ( $timestamp ) {
 					$timestamp = $dbw->timestamp( $timestamp );
 				} else {
@@ -86,7 +88,8 @@ class ApiSetNotificationTimestamp extends ApiBase {
 			}
 			$title = reset( $pageSet->getGoodTitles() );
 			if ( $title ) {
-				$revid = $title->getNextRevisionID( $params['newerthanrevid'] );
+				$revid = $title->getNextRevisionID(
+					$params['newerthanrevid'], Title::GAID_FOR_UPDATE );
 				if ( $revid ) {
 					$timestamp = $dbw->timestamp( Revision::getTimestampFromId( $title, $revid ) );
 				} else {
@@ -96,11 +99,11 @@ class ApiSetNotificationTimestamp extends ApiBase {
 		}
 
 		$apiResult = $this->getResult();
-		$result = array();
+		$result = [];
 		if ( $params['entirewatchlist'] ) {
 			// Entire watchlist mode: Just update the thing and return a success indicator
-			$dbw->update( 'watchlist', array( 'wl_notificationtimestamp' => $timestamp ),
-				array( 'wl_user' => $user->getID() ),
+			$dbw->update( 'watchlist', [ 'wl_notificationtimestamp' => $timestamp ],
+				[ 'wl_user' => $user->getId() ],
 				__METHOD__
 			);
 
@@ -109,41 +112,39 @@ class ApiSetNotificationTimestamp extends ApiBase {
 				: wfTimestamp( TS_ISO_8601, $timestamp );
 		} else {
 			// First, log the invalid titles
-			foreach ( $pageSet->getInvalidTitles() as $title ) {
-				$r = array();
-				$r['title'] = $title;
-				$r['invalid'] = '';
+			foreach ( $pageSet->getInvalidTitlesAndReasons() as $r ) {
+				$r['invalid'] = true;
 				$result[] = $r;
 			}
 			foreach ( $pageSet->getMissingPageIDs() as $p ) {
-				$page = array();
+				$page = [];
 				$page['pageid'] = $p;
-				$page['missing'] = '';
-				$page['notwatched'] = '';
+				$page['missing'] = true;
+				$page['notwatched'] = true;
 				$result[] = $page;
 			}
 			foreach ( $pageSet->getMissingRevisionIDs() as $r ) {
-				$rev = array();
+				$rev = [];
 				$rev['revid'] = $r;
-				$rev['missing'] = '';
-				$rev['notwatched'] = '';
+				$rev['missing'] = true;
+				$rev['notwatched'] = true;
 				$result[] = $rev;
 			}
 
 			if ( $pageSet->getTitles() ) {
 				// Now process the valid titles
 				$lb = new LinkBatch( $pageSet->getTitles() );
-				$dbw->update( 'watchlist', array( 'wl_notificationtimestamp' => $timestamp ),
-					array( 'wl_user' => $user->getID(), $lb->constructSet( 'wl', $dbw ) ),
+				$dbw->update( 'watchlist', [ 'wl_notificationtimestamp' => $timestamp ],
+					[ 'wl_user' => $user->getId(), $lb->constructSet( 'wl', $dbw ) ],
 					__METHOD__
 				);
 
 				// Query the results of our update
-				$timestamps = array();
+				$timestamps = [];
 				$res = $dbw->select(
 					'watchlist',
-					array( 'wl_namespace', 'wl_title', 'wl_notificationtimestamp' ),
-					array( 'wl_user' => $user->getID(), $lb->constructSet( 'wl', $dbw ) ),
+					[ 'wl_namespace', 'wl_title', 'wl_notificationtimestamp' ],
+					[ 'wl_user' => $user->getId(), $lb->constructSet( 'wl', $dbw ) ],
 					__METHOD__
 				);
 				foreach ( $res as $row ) {
@@ -155,12 +156,12 @@ class ApiSetNotificationTimestamp extends ApiBase {
 				foreach ( $pageSet->getTitles() as $title ) {
 					$ns = $title->getNamespace();
 					$dbkey = $title->getDBkey();
-					$r = array(
+					$r = [
 						'ns' => intval( $ns ),
 						'title' => $title->getPrefixedText(),
-					);
+					];
 					if ( !$title->exists() ) {
-						$r['missing'] = '';
+						$r['missing'] = true;
 					}
 					if ( isset( $timestamps[$ns] ) && array_key_exists( $dbkey, $timestamps[$ns] ) ) {
 						$r['notificationtimestamp'] = '';
@@ -168,17 +169,18 @@ class ApiSetNotificationTimestamp extends ApiBase {
 							$r['notificationtimestamp'] = wfTimestamp( TS_ISO_8601, $timestamps[$ns][$dbkey] );
 						}
 					} else {
-						$r['notwatched'] = '';
+						$r['notwatched'] = true;
 					}
 					$result[] = $r;
 				}
 			}
 
-			$apiResult->setIndexedTagName( $result, 'page' );
+			ApiResult::setIndexedTagName( $result, 'page' );
 		}
 		$apiResult->addValue( null, $this->getModuleName(), $result );
 
-		$apiResult->endContinuation();
+		$this->setContinuationManager( null );
+		$continuationManager->setContinuationIntoResult( $apiResult );
 	}
 
 	/**
@@ -206,21 +208,23 @@ class ApiSetNotificationTimestamp extends ApiBase {
 	}
 
 	public function getAllowedParams( $flags = 0 ) {
-		$result = array(
-			'entirewatchlist' => array(
+		$result = [
+			'entirewatchlist' => [
 				ApiBase::PARAM_TYPE => 'boolean'
-			),
-			'timestamp' => array(
+			],
+			'timestamp' => [
 				ApiBase::PARAM_TYPE => 'timestamp'
-			),
-			'torevid' => array(
+			],
+			'torevid' => [
 				ApiBase::PARAM_TYPE => 'integer'
-			),
-			'newerthanrevid' => array(
+			],
+			'newerthanrevid' => [
 				ApiBase::PARAM_TYPE => 'integer'
-			),
-			'continue' => '',
-		);
+			],
+			'continue' => [
+				ApiBase::PARAM_HELP_MSG => 'api-help-param-continue',
+			],
+		];
 		if ( $flags ) {
 			$result += $this->getPageSet()->getFinalParams( $flags );
 		}
@@ -228,35 +232,18 @@ class ApiSetNotificationTimestamp extends ApiBase {
 		return $result;
 	}
 
-	public function getParamDescription() {
-		return $this->getPageSet()->getFinalParamDescription() + array(
-			'entirewatchlist' => 'Work on all watched pages',
-			'timestamp' => 'Timestamp to which to set the notification timestamp',
-			'torevid' => 'Revision to set the notification timestamp to (one page only)',
-			'newerthanrevid' => 'Revision to set the notification timestamp newer than (one page only)',
-			'continue' => 'When more results are available, use this to continue',
-		);
-	}
-
-	public function getDescription() {
-		return array( 'Update the notification timestamp for watched pages.',
-			'This affects the highlighting of changed pages in the watchlist and history,',
-			'and the sending of email when the "Email me when a page on my watchlist is',
-			'changed" preference is enabled.'
-		);
-	}
-
-	public function getExamples() {
-		return array(
-			'api.php?action=setnotificationtimestamp&entirewatchlist=&token=123ABC'
-				=> 'Reset the notification status for the entire watchlist',
-			'api.php?action=setnotificationtimestamp&titles=Main_page&token=123ABC'
-				=> 'Reset the notification status for "Main page"',
-			'api.php?action=setnotificationtimestamp&titles=Main_page&' .
+	protected function getExamplesMessages() {
+		return [
+			'action=setnotificationtimestamp&entirewatchlist=&token=123ABC'
+				=> 'apihelp-setnotificationtimestamp-example-all',
+			'action=setnotificationtimestamp&titles=Main_page&token=123ABC'
+				=> 'apihelp-setnotificationtimestamp-example-page',
+			'action=setnotificationtimestamp&titles=Main_page&' .
 				'timestamp=2012-01-01T00:00:00Z&token=123ABC'
-				=> 'Set the notification timestamp for "Main page" so all edits ' .
-					'since 1 January 2012 are unviewed',
-		);
+				=> 'apihelp-setnotificationtimestamp-example-pagetimestamp',
+			'action=setnotificationtimestamp&generator=allpages&gapnamespace=2&token=123ABC'
+				=> 'apihelp-setnotificationtimestamp-example-allpages',
+		];
 	}
 
 	public function getHelpUrls() {

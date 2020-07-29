@@ -6,7 +6,8 @@ var ProtectionForm = window.ProtectionForm = {
 	 * on the protection form
 	 */
 	init: function () {
-		var $cell = $( '<td>' ), $row = $( '<tr>' ).append( $cell );
+		var $cell = $( '<td>' ),
+			$row = $( '<tr>' ).append( $cell );
 
 		if ( !$( '#mwProtectSet' ).length ) {
 			return false;
@@ -63,7 +64,7 @@ var ProtectionForm = window.ProtectionForm = {
 	},
 
 	/**
-	 * Checks if a cerain protection level is cascadeable.
+	 * Checks if a certain protection level is cascadeable.
 	 *
 	 * @param {string} level
 	 * @return {boolean}
@@ -145,7 +146,7 @@ var ProtectionForm = window.ProtectionForm = {
 	 */
 	matchAttribute: function ( objects, attrName ) {
 		return $.map( objects, function ( object ) {
-			return object[attrName];
+			return object[ attrName ];
 		} ).filter( function ( item, index, a ) {
 			return index === a.indexOf( item );
 		} ).length === 1;
@@ -176,6 +177,7 @@ var ProtectionForm = window.ProtectionForm = {
 
 	/**
 	 * Find the highest protection level in any selector
+	 *
 	 * @return {number}
 	 */
 	getMaxLevel: function () {

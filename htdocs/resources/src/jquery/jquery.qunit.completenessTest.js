@@ -17,8 +17,8 @@
 
 	var util,
 		hasOwn = Object.prototype.hasOwnProperty,
-		log = (window.console && window.console.log)
-			? function () { return window.console.log.apply(window.console, arguments); }
+		log = ( window.console && window.console.log )
+			? function () { return window.console.log.apply( window.console, arguments ); }
 			: function () {};
 
 	// Simplified version of a few jQuery methods, except that they don't
@@ -51,14 +51,14 @@
 
 	/**
 	 * CompletenessTest
-	 * @constructor
 	 *
+	 * @constructor
 	 * @example
 	 *  var myTester = new CompletenessTest( myLib );
-	 * @param masterVariable {Object} The root variable that contains all object
+	 * @param {Object} masterVariable The root variable that contains all object
 	 *  members. CompletenessTest will recursively traverse objects and keep track
 	 *  of all methods.
-	 * @param ignoreFn {Function} Optionally pass a function to filter out certain
+	 * @param {Function} [ignoreFn] Optionally pass a function to filter out certain
 	 *  methods. Example: You may want to filter out instances of jQuery or some
 	 *  other constructor. Otherwise "missingTests" will include all methods that
 	 *  were not called from that instance.
@@ -91,7 +91,7 @@
 			// Restore warnings
 			mw.log.warn = warn;
 			warn = undefined;
-		});
+		} );
 
 		QUnit.done( function () {
 			that.populateMissingTests();
@@ -114,7 +114,7 @@
 					var elItem = document.createElement( 'li' );
 					elItem.textContent = key;
 					elList.appendChild( elItem );
-				});
+				} );
 
 				elFoot = document.createElement( 'p' );
 				elFoot.innerHTML = '<em>&mdash; CompletenessTest</em>';
@@ -132,8 +132,8 @@
 				elOutputWrapper.appendChild( elContainer );
 
 				util.each( style, function ( key, value ) {
-					elOutputWrapper.style[key] = value;
-				});
+					elOutputWrapper.style[ key ] = value;
+				} );
 				return elOutputWrapper;
 			}
 
@@ -171,7 +171,7 @@
 			if ( toolbar ) {
 				toolbar.insertBefore( testResults, toolbar.firstChild );
 			}
-		});
+		} );
 
 		return this;
 	}
@@ -186,12 +186,12 @@
 		 * Depending on the action it either injects our listener into the methods, or
 		 * reads from our tracker and records which methods have not been called by the test suite.
 		 *
-		 * @param currName {String|Null} Name of the given object member (Initially this is null).
-		 * @param currVar {mixed} The variable to check (initially an object,
+		 * @param {Mixed} currObj The variable to check (initially an object,
 		 *  further down it could be anything).
-		 * @param masterVariable {Object} Throughout our interation, always keep track of the master/root.
+		 * @param {string|null} currName Name of the given object member (Initially this is null).
+		 * @param {Object} masterVariable Throughout our interation, always keep track of the master/root.
 		 *  Initially this is the same as currVar.
-		 * @param parentPathArray {Array} Array of names that indicate our breadcrumb path starting at
+		 * @param {Array} parentPathArray Array of names that indicate our breadcrumb path starting at
 		 *  masterVariable. Not including currName.
 		 */
 		walkTheObject: function ( currObj, currName, masterVariable, parentPathArray ) {
@@ -201,7 +201,7 @@
 
 			if ( currName ) {
 				currPathArray.push( currName );
-				currVal = currObj[currName];
+				currVal = currObj[ currName ];
 			} else {
 				currName = '(root)';
 				currVal = currObj;
@@ -248,7 +248,7 @@
 			var ct = this;
 			util.each( ct.injectionTracker, function ( key ) {
 				ct.hasTest( key );
-			});
+			} );
 		},
 
 		/**
@@ -258,12 +258,12 @@
 		 * was called during the test suite (as far as the tracker knows).
 		 * If not it adds it to missingTests.
 		 *
-		 * @param fnName {String}
-		 * @return {Boolean}
+		 * @param {string} fnName
+		 * @return {boolean}
 		 */
 		hasTest: function ( fnName ) {
 			if ( !( fnName in this.methodCallTracker ) ) {
-				this.missingTests[fnName] = true;
+				this.missingTests[ fnName ] = true;
 				return false;
 			}
 			return true;
@@ -275,9 +275,10 @@
 		 * Injects a function (such as a spy that updates methodCallTracker when
 		 * it's called) inside another function.
 		 *
-		 * @param masterVariable {Object}
-		 * @param objectPathArray {Array}
-		 * @param injectFn {Function}
+		 * @param {Object} obj The object into which `injectFn` will be inserted
+		 * @param {Array} key The key by which `injectFn` will be known in `obj`; if this already
+		 *   exists, a wrapper will first call `injectFn` and then the original `obj[key]` function.
+		 * @param {Function} injectFn The function to insert
 		 */
 		injectCheck: function ( obj, key, injectFn ) {
 			var spy,
@@ -291,8 +292,11 @@
 			// Make the spy inherit from the original so that its static methods are also
 			// visible in the spy (e.g. when we inject a check into mw.log, mw.log.warn
 			// must remain accessible).
+			// XXX: https://github.com/jshint/jshint/issues/2656
+			/*jshint ignore:start */
 			/*jshint proto:true */
 			spy.__proto__ = val;
+			/*jshint ignore:end */
 
 			// Objects are by reference, members (unless objects) are not.
 			obj[ key ] = spy;

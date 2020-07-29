@@ -30,6 +30,11 @@ class CategoryPage extends Article {
 	protected $mCategoryViewerClass = 'CategoryViewer';
 
 	/**
+	 * @var WikiCategoryPage
+	 */
+	protected $mPage;
+
+	/**
 	 * @param Title $title
 	 * @return WikiCategoryPage
 	 */
@@ -61,7 +66,10 @@ class CategoryPage extends Article {
 			return;
 		}
 
-		if ( !wfRunHooks( 'CategoryPageView', array( &$this ) ) ) {
+		// Avoid PHP 7.1 warning of passing $this by reference
+		$categoryPage = $this;
+
+		if ( !Hooks::run( 'CategoryPageView', [ &$categoryPage ] ) ) {
 			return;
 		}
 
@@ -89,8 +97,8 @@ class CategoryPage extends Article {
 
 		$reqArray = $request->getValues();
 
-		$from = $until = array();
-		foreach ( array( 'page', 'subcat', 'file' ) as $type ) {
+		$from = $until = [];
+		foreach ( [ 'page', 'subcat', 'file' ] as $type ) {
 			$from[$type] = $request->getVal( "{$type}from", $oldFrom );
 			$until[$type] = $request->getVal( "{$type}until", $oldUntil );
 
@@ -113,6 +121,8 @@ class CategoryPage extends Article {
 			$until,
 			$reqArray
 		);
-		$this->getContext()->getOutput()->addHTML( $viewer->getHTML() );
+		$out = $this->getContext()->getOutput();
+		$out->addHTML( $viewer->getHTML() );
+		$this->addHelpLink( 'Help:Categories' );
 	}
 }

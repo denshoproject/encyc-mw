@@ -2,10 +2,6 @@
 /**
  * A few constants that might be needed during LocalSettings.php.
  *
- * Note: these constants must all be resolvable at compile time by HipHop,
- * since this file will not be executed during request startup for a compiled
- * MediaWiki.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -28,11 +24,6 @@
  * @defgroup Constants MediaWiki constants
  */
 
-/**
- * Version constants for the benefit of extensions
- */
-define( 'MW_SPECIALPAGE_VERSION', 2 );
-
 /**@{
  * Database related constants
  */
@@ -42,7 +33,7 @@ define( 'DBO_IGNORE', 4 );
 define( 'DBO_TRX', 8 ); // automatically start transaction on first query
 define( 'DBO_DEFAULT', 16 );
 define( 'DBO_PERSISTENT', 32 );
-define( 'DBO_SYSDBA', 64 ); //for oracle maintenance
+define( 'DBO_SYSDBA', 64 ); // for oracle maintenance
 define( 'DBO_DDLMODE', 128 ); // when using schema files: mostly for Oracle
 define( 'DBO_SSL', 256 );
 define( 'DBO_COMPRESS', 512 );
@@ -52,7 +43,8 @@ define( 'DBO_COMPRESS', 512 );
  * Valid database indexes
  * Operation-based indexes
  */
-define( 'DB_SLAVE', -1 );     # Read from the slave (or only server)
+define( 'DB_REPLICA', -1 );   # Read from the replica (or only server)
+define( 'DB_SLAVE', -1 );     # Obsolete alias for DB_REPLICA
 define( 'DB_MASTER', -2 );    # Write to master (or only server)
 /**@}*/
 
@@ -144,20 +136,21 @@ define( 'MEDIATYPE_ARCHIVE', 'ARCHIVE' );
 /**@{
  * Antivirus result codes, for use in $wgAntivirusSetup.
  */
-define( 'AV_NO_VIRUS', 0 );  #scan ok, no virus found
-define( 'AV_VIRUS_FOUND', 1 );  #virus found!
-define( 'AV_SCAN_ABORTED', -1 );  #scan aborted, the file is probably immune
-define( 'AV_SCAN_FAILED', false );  #scan failed (scanner not found or error in scanner)
+define( 'AV_NO_VIRUS', 0 );  # scan ok, no virus found
+define( 'AV_VIRUS_FOUND', 1 );  # virus found!
+define( 'AV_SCAN_ABORTED', -1 );  # scan aborted, the file is probably immune
+define( 'AV_SCAN_FAILED', false );  # scan failed (scanner not found or error in scanner)
 /**@}*/
 
 /**@{
  * Anti-lock flags
- * See DefaultSettings.php for a description
+ * Was used by $wgAntiLockFlags, which was removed with 1.25
+ * Constants kept to not have warnings when used in LocalSettings
  */
 define( 'ALF_PRELOAD_LINKS', 1 ); // unused
 define( 'ALF_PRELOAD_EXISTENCE', 2 ); // unused
-define( 'ALF_NO_LINK_LOCK', 4 );
-define( 'ALF_NO_BLOCK_LOCK', 8 );
+define( 'ALF_NO_LINK_LOCK', 4 ); // unused
+define( 'ALF_NO_BLOCK_LOCK', 8 ); // unused
 /**@}*/
 
 /**@{
@@ -178,6 +171,7 @@ define( 'RC_EDIT', 0 );
 define( 'RC_NEW', 1 );
 define( 'RC_LOG', 3 );
 define( 'RC_EXTERNAL', 5 );
+define( 'RC_CATEGORIZE', 6 );
 /**@}*/
 
 /**@{
@@ -188,7 +182,7 @@ define( 'EDIT_UPDATE', 2 );
 define( 'EDIT_MINOR', 4 );
 define( 'EDIT_SUPPRESS_RC', 8 );
 define( 'EDIT_FORCE_BOT', 16 );
-define( 'EDIT_DEFER_UPDATES', 32 );
+define( 'EDIT_DEFER_UPDATES', 32 ); // Unused since 1.27
 define( 'EDIT_AUTOSUMMARY', 64 );
 /**@}*/
 
@@ -206,15 +200,15 @@ define( 'LIST_OR', 4 );
 /**
  * Unicode and normalisation related
  */
-require_once __DIR__ . '/normal/UtfNormalDefines.php';
+require_once __DIR__ . '/compat/normal/UtfNormalDefines.php';
 
 /**@{
  * Hook support constants
  */
-define( 'MW_SUPPORTS_EDITFILTERMERGED', 1 );
 define( 'MW_SUPPORTS_PARSERFIRSTCALLINIT', 1 );
 define( 'MW_SUPPORTS_LOCALISATIONCACHE', 1 );
 define( 'MW_SUPPORTS_CONTENTHANDLER', 1 );
+define( 'MW_EDITFILTERMERGED_SUPPORTS_API', 1 );
 /**@}*/
 
 /** Support for $wgResourceModules */
@@ -223,6 +217,12 @@ define( 'MW_SUPPORTS_RESOURCE_MODULES', 1 );
 /**@{
  * Allowed values for Parser::$mOutputType
  * Parameter to Parser::startExternalParse().
+ * Use of Parser consts is preferred:
+ * - Parser::OT_HTML
+ * - Parser::OT_WIKI
+ * - Parser::OT_PREPROCESS
+ * - Parser::OT_MSG
+ * - Parser::OT_PLAIN
  */
 define( 'OT_HTML', 1 );
 define( 'OT_WIKI', 2 );
@@ -233,15 +233,13 @@ define( 'OT_PLAIN', 4 );
 
 /**@{
  * Flags for Parser::setFunctionHook
+ * Use of Parser consts is preferred:
+ * - Parser::SFH_NO_HASH
+ * - Parser::SFH_OBJECT_ARGS
  */
 define( 'SFH_NO_HASH', 1 );
 define( 'SFH_OBJECT_ARGS', 2 );
 /**@}*/
-
-/**
- * Flags for Parser::replaceLinkHolders
- */
-define( 'RLH_FOR_UPDATE', 1 );
 
 /**@{
  * Autopromote conditions (must be here and not in Autopromote.php, so that
@@ -307,4 +305,10 @@ define( 'CONTENT_FORMAT_SERIALIZED', 'application/vnd.php.serialized' );
 define( 'CONTENT_FORMAT_JSON', 'application/json' );
 // for future use with the api, and for use by extensions
 define( 'CONTENT_FORMAT_XML', 'application/xml' );
+/**@}*/
+
+/**@{
+ * Max string length for shell invocations; based on binfmts.h
+ */
+define( 'SHELL_MAX_ARG_STRLEN', '100000' );
 /**@}*/

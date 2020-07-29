@@ -25,6 +25,14 @@ a:hover, a:focus {
 	text-decoration: underline;
 }
 
+a:lang(ar),
+a:lang(kk-arab),
+a:lang(mzn),
+a:lang(ps),
+a:lang(ur) {
+	text-decoration: none;
+}
+
 a.stub {
 	color: #772233;
 }
@@ -62,6 +70,10 @@ a.new:visited, #p-personal a.new:visited {
 
 .mw-body a.external:active {
 	color: #b63;
+}
+
+.mw-body a.external.free {
+	word-wrap: break-word;
 }
 
 /* Inline Elements */
@@ -112,7 +124,7 @@ h6 {
 }
 
 h3 {
-	font-size: 132%;
+	font-size: 128%;
 }
 
 h4 {
@@ -141,7 +153,6 @@ h5 {
 
 p {
 	margin: .4em 0 .5em 0;
-	line-height: 1.5em;
 }
 
 p img {
@@ -149,14 +160,12 @@ p img {
 }
 
 ul {
-	line-height: 1.5em;
 	list-style-type: square;
 	margin: .3em 0 0 1.6em;
 	padding: 0;
 }
 
 ol {
-	line-height: 1.5em;
 	margin: .3em 0 0 3.2em;
 	padding: 0;
 	list-style-image: none;
@@ -177,15 +186,8 @@ dl {
 }
 
 dd {
-	line-height: 1.5em;
 	margin-left: 1.6em;
 	margin-bottom: .1em;
-}
-
-/* IE 6 and 7 lack support for quotes aroud the <q> element ('::before' and '::after'
-   pseudoelements, 'quotes' property). Let's italicize it instead (using the star hack). */
-q {
-	*font-style: italic;
 }
 
 pre, code, tt, kbd, samp, .mw-code {
@@ -204,11 +206,14 @@ code {
 	padding: 1px 4px;
 }
 
-pre, .mw-code {
+pre,
+.mw-code {
 	color: black;
 	background-color: #f9f9f9;
 	border: 1px solid #ddd;
 	padding: 1em;
+	/* Wrap lines in overflow. T2260, T103780 */
+	white-space: pre-wrap;
 }
 
 /* Tables */
@@ -221,7 +226,6 @@ fieldset {
 	border: 1px solid #2f6fab;
 	margin: 1em 0 1em 0;
 	padding: 0 1em 1em;
-	line-height: 1.5em;
 }
 
 fieldset.nested {
@@ -246,10 +250,6 @@ textarea {
 	-moz-box-sizing: border-box;
 	-webkit-box-sizing: border-box;
 	box-sizing: border-box;
-}
-
-select {
-	vertical-align: top;
 }
 
 /* Emulate Center */

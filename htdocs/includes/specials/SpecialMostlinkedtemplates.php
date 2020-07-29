@@ -61,21 +61,21 @@ class MostlinkedTemplatesPage extends QueryPage {
 	}
 
 	public function getQueryInfo() {
-		return array(
-			'tables' => array( 'templatelinks' ),
-			'fields' => array(
+		return [
+			'tables' => [ 'templatelinks' ],
+			'fields' => [
 				'namespace' => 'tl_namespace',
 				'title' => 'tl_title',
 				'value' => 'COUNT(*)'
-			),
-			'options' => array( 'GROUP BY' => array( 'tl_namespace', 'tl_title' ) )
-		);
+			],
+			'options' => [ 'GROUP BY' => [ 'tl_namespace', 'tl_title' ] ]
+		];
 	}
 
 	/**
 	 * Pre-cache page existence to speed up link generation
 	 *
-	 * @param DatabaseBase $db
+	 * @param IDatabase $db
 	 * @param ResultWrapper $res
 	 */
 	public function preprocessResults( $db, $res ) {
@@ -104,7 +104,7 @@ class MostlinkedTemplatesPage extends QueryPage {
 		if ( !$title ) {
 			return Html::element(
 				'span',
-				array( 'class' => 'mw-invalidtitle' ),
+				[ 'class' => 'mw-invalidtitle' ],
 				Linker::getInvalidTitleDescription(
 					$this->getContext(),
 					$result->namespace,

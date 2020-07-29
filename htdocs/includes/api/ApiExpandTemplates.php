@@ -47,15 +47,24 @@ class ApiExpandTemplates extends ApiBase {
 				'legacy format has been used for the output. This format is deprecated, and in ' .
 				'the future, a default value will be set for the prop parameter, causing the new' .
 				'format to always be used.' );
-			$prop = array();
+			$prop = [];
 		} else {
 			$prop = array_flip( $params['prop'] );
 		}
 
-		// Create title for parser
-		$title_obj = Title::newFromText( $params['title'] );
-		if ( !$title_obj || $title_obj->isExternal() ) {
-			$this->dieUsageMsg( array( 'invalidtitle', $params['title'] ) );
+		// Get title and revision ID for parser
+		$revid = $params['revid'];
+		if ( $revid !== null ) {
+			$rev = Revision::newFromId( $revid );
+			if ( !$rev ) {
+				$this->dieUsage( "There is no revision ID $revid", 'missingrev' );
+			}
+			$title_obj = $rev->getTitle();
+		} else {
+			$title_obj = Title::newFromText( $params['title'] );
+			if ( !$title_obj || $title_obj->isExternal() ) {
+				$this->dieUsageMsg( [ 'invalidtitle', $params['title'] ] );
+			}
 		}
 
 		$result = $this->getResult();
@@ -68,16 +77,12 @@ class ApiExpandTemplates extends ApiBase {
 			$options->setRemoveComments( false );
 		}
 
-		$retval = array();
+		$retval = [];
 
 		if ( isset( $prop['parsetree'] ) || $params['generatexml'] ) {
-			if ( !isset( $prop['parsetree'] ) ) {
-				$this->logFeatureUsage( 'action=expandtemplates&generatexml' );
-			}
-
-			$wgParser->startExternalParse( $title_obj, $options, OT_PREPROCESS );
+			$wgParser->startExternalParse( $title_obj, $options, Parser::OT_PREPROCESS );
 			$dom = $wgParser->preprocessToDom( $params['text'] );
-			if ( is_callable( array( $dom, 'saveXML' ) ) ) {
+			if ( is_callable( [ $dom, 'saveXML' ] ) ) {
 				$xml = $dom->saveXML();
 			} else {
 				$xml = $dom->__toString();
@@ -87,38 +92,46 @@ class ApiExpandTemplates extends ApiBase {
 				$retval['parsetree'] = $xml;
 			} else {
 				// the old way
-				$xml_result = array();
-				ApiResult::setContent( $xml_result, $xml );
-				$result->addValue( null, 'parsetree', $xml_result );
+				$result->addValue( null, 'parsetree', $xml );
+				$result->addValue( null, ApiResult::META_BC_SUBELEMENTS, [ 'parsetree' ] );
 			}
 		}
 
 		// if they didn't want any output except (probably) the parse tree,
 		// then don't bother actually fully expanding it
 		if ( $prop || $params['prop'] === null ) {
-			$wgParser->startExternalParse( $title_obj, $options, OT_PREPROCESS );
+			$wgParser->startExternalParse( $title_obj, $options, Parser::OT_PREPROCESS );
 			$frame = $wgParser->getPreprocessor()->newFrame();
-			$wikitext = $wgParser->preprocess( $params['text'], $title_obj, $options, null, $frame );
+			$wikitext = $wgParser->preprocess( $params['text'], $title_obj, $options, $revid, $frame );
 			if ( $params['prop'] === null ) {
 				// the old way
-				ApiResult::setContent( $retval, $wikitext );
+				ApiResult::setContentValue( $retval, 'wikitext', $wikitext );
 			} else {
+				$p_output = $wgParser->getOutput();
 				if ( isset( $prop['categories'] ) ) {
-					$categories = $wgParser->getOutput()->getCategories();
-					if ( !empty( $categories ) ) {
-						$categories_result = array();
+					$categories = $p_output->getCategories();
+					if ( $categories ) {
+						$categories_result = [];
 						foreach ( $categories as $category => $sortkey ) {
-							$entry = array();
+							$entry = [];
 							$entry['sortkey'] = $sortkey;
-							ApiResult::setContent( $entry, $category );
+							ApiResult::setContentValue( $entry, 'category', (string)$category );
 							$categories_result[] = $entry;
 						}
-						$result->setIndexedTagName( $categories_result, 'category' );
+						ApiResult::setIndexedTagName( $categories_result, 'category' );
 						$retval['categories'] = $categories_result;
 					}
 				}
-				if ( isset( $prop['volatile'] ) && $frame->isVolatile() ) {
-					$retval['volatile'] = '';
+				if ( isset( $prop['properties'] ) ) {
+					$properties = $p_output->getProperties();
+					if ( $properties ) {
+						ApiResult::setArrayType( $properties, 'BCkvp', 'name' );
+						ApiResult::setIndexedTagName( $properties, 'property' );
+						$retval['properties'] = $properties;
+					}
+				}
+				if ( isset( $prop['volatile'] ) ) {
+					$retval['volatile'] = $frame->isVolatile();
 				}
 				if ( isset( $prop['ttl'] ) && $frame->getTTL() !== null ) {
 					$retval['ttl'] = $frame->getTTL();
@@ -126,69 +139,73 @@ class ApiExpandTemplates extends ApiBase {
 				if ( isset( $prop['wikitext'] ) ) {
 					$retval['wikitext'] = $wikitext;
 				}
+				if ( isset( $prop['modules'] ) ) {
+					$retval['modules'] = array_values( array_unique( $p_output->getModules() ) );
+					$retval['modulescripts'] = array_values( array_unique( $p_output->getModuleScripts() ) );
+					$retval['modulestyles'] = array_values( array_unique( $p_output->getModuleStyles() ) );
+				}
+				if ( isset( $prop['jsconfigvars'] ) ) {
+					$retval['jsconfigvars'] =
+						ApiResult::addMetadataToResultVars( $p_output->getJsConfigVars() );
+				}
+				if ( isset( $prop['encodedjsconfigvars'] ) ) {
+					$retval['encodedjsconfigvars'] = FormatJson::encode(
+						$p_output->getJsConfigVars(), false, FormatJson::ALL_OK
+					);
+					$retval[ApiResult::META_SUBELEMENTS][] = 'encodedjsconfigvars';
+				}
+				if ( isset( $prop['modules'] ) &&
+					!isset( $prop['jsconfigvars'] ) && !isset( $prop['encodedjsconfigvars'] ) ) {
+					$this->setWarning( "Property 'modules' was set but not 'jsconfigvars' " .
+						"or 'encodedjsconfigvars'. Configuration variables are necessary " .
+						'for proper module usage.' );
+				}
 			}
 		}
-		$result->setSubelements( $retval, array( 'wikitext', 'parsetree' ) );
+		ApiResult::setSubelementsList( $retval, [ 'wikitext', 'parsetree' ] );
 		$result->addValue( null, $this->getModuleName(), $retval );
 	}
 
 	public function getAllowedParams() {
-		return array(
-			'title' => array(
+		return [
+			'title' => [
 				ApiBase::PARAM_DFLT => 'API',
-			),
-			'text' => array(
-				ApiBase::PARAM_TYPE => 'string',
+			],
+			'text' => [
+				ApiBase::PARAM_TYPE => 'text',
 				ApiBase::PARAM_REQUIRED => true,
-			),
-			'prop' => array(
-				ApiBase::PARAM_TYPE => array(
+			],
+			'revid' => [
+				ApiBase::PARAM_TYPE => 'integer',
+			],
+			'prop' => [
+				ApiBase::PARAM_TYPE => [
 					'wikitext',
 					'categories',
+					'properties',
 					'volatile',
 					'ttl',
+					'modules',
+					'jsconfigvars',
+					'encodedjsconfigvars',
 					'parsetree',
-				),
+				],
 				ApiBase::PARAM_ISMULTI => true,
-			),
+				ApiBase::PARAM_HELP_MSG_PER_VALUE => [],
+			],
 			'includecomments' => false,
-			'generatexml' => array(
+			'generatexml' => [
 				ApiBase::PARAM_TYPE => 'boolean',
 				ApiBase::PARAM_DEPRECATED => true,
-			),
-		);
+			],
+		];
 	}
 
-	public function getParamDescription() {
-		return array(
-			'text' => 'Wikitext to convert',
-			'title' => 'Title of page',
-			'prop' => array(
-				'Which pieces of information to get',
-				' wikitext   - The expanded wikitext',
-				' categories - Any categories present in the input that are not represented in ' .
-					'the wikitext output',
-				' volatile   - Whether the output is volatile and should not be reused ' .
-					'elsewhere within the page',
-				' ttl        - The maximum time after which caches of the result should be ' .
-					'invalidated',
-				' parsetree  - The XML parse tree of the input',
-				'Note that if no values are selected, the result will contain the wikitext,',
-				'but the output will be in a deprecated format.',
-			),
-			'includecomments' => 'Whether to include HTML comments in the output',
-			'generatexml' => 'Generate XML parse tree (replaced by prop=parsetree)',
-		);
-	}
-
-	public function getDescription() {
-		return 'Expands all templates in wikitext.';
-	}
-
-	public function getExamples() {
-		return array(
-			'api.php?action=expandtemplates&text={{Project:Sandbox}}'
-		);
+	protected function getExamplesMessages() {
+		return [
+			'action=expandtemplates&text={{Project:Sandbox}}'
+				=> 'apihelp-expandtemplates-example-simple',
+		];
 	}
 
 	public function getHelpUrls() {

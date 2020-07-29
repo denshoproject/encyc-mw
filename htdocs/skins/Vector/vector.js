@@ -2,6 +2,14 @@
  * Vector-specific scripts
  */
 jQuery( function ( $ ) {
+
+	/**
+	 * Collapsible tabs
+	 */
+	var $cactions = $( '#p-cactions' ),
+		$tabContainer = $( '#p-views ul' ),
+		originalDropdownWidth = $cactions.width();
+
 	/**
 	 * Focus search input at the very end
 	 */
@@ -33,18 +41,6 @@ jQuery( function ( $ ) {
 			.attr( 'tabindex', '-1' );
 	} );
 
-	/**
-	 * Sidebar
-	 */
-	$( '#mw-panel > .portal:first' ).addClass( 'first' );
-
-	/**
-	 * Collapsible tabs
-	 */
-	var $cactions = $( '#p-cactions' ),
-		$tabContainer = $( '#p-views ul' ),
-		originalDropdownWidth = $cactions.width();
-
 	// Bind callback functions to animate our drop down menu in and out
 	// and then call the collapsibleTabs function on the menu
 	$tabContainer
@@ -54,16 +50,16 @@ jQuery( function ( $ ) {
 				$cactions
 					.removeClass( 'emptyPortlet' )
 					.find( 'h3' )
-						.css( 'width', '1px' ).animate( { 'width': originalDropdownWidth }, 'normal' );
+						.css( 'width', '1px' ).animate( { width: originalDropdownWidth }, 'normal' );
 			}
 		} )
 		.bind( 'beforeTabExpand', function () {
 			// If we're removing the last child node right now, hide the dropdown
 			if ( $cactions.find( 'li' ).length === 1 ) {
-				$cactions.find( 'h3' ).animate( { 'width': '1px' }, 'normal', function () {
+				$cactions.find( 'h3' ).animate( { width: '1px' }, 'normal', function () {
 					$( this ).attr( 'style', '' )
 						.parent().addClass( 'emptyPortlet' );
-				});
+				} );
 			}
 		} )
 		.collapsibleTabs( {

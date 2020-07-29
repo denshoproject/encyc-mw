@@ -40,9 +40,9 @@ final class PasswordFactory {
 	 * @see PasswordFactory::register
 	 * @see Setup.php
 	 */
-	private $types = array(
-		'' => array( 'type' => '', 'class' => 'InvalidPassword' ),
-	);
+	private $types = [
+		'' => [ 'type' => '', 'class' => 'InvalidPassword' ],
+	];
 
 	/**
 	 * Register a new type of password hash
@@ -66,6 +66,15 @@ final class PasswordFactory {
 			throw new InvalidArgumentException( "Invalid password type $type." );
 		}
 		$this->default = $type;
+	}
+
+	/**
+	 * Get the default password type
+	 *
+	 * @return string
+	 */
+	public function getDefaultType() {
+		return $this->default;
 	}
 
 	/**
@@ -103,7 +112,7 @@ final class PasswordFactory {
 	 */
 	public function newFromCiphertext( $hash ) {
 		if ( $hash === null || $hash === false || $hash === '' ) {
-			return new InvalidPassword( $this, array( 'type' => '' ), null );
+			return new InvalidPassword( $this, [ 'type' => '' ], null );
 		} elseif ( $hash[0] !== ':' ) {
 			throw new PasswordError( 'Invalid hash given' );
 		}
@@ -141,11 +150,15 @@ final class PasswordFactory {
 	 * If no existing object is given, make a new default object. If one is given, clone that
 	 * object. Then pass the plaintext to Password::crypt().
 	 *
-	 * @param string $password Plaintext password
+	 * @param string|null $password Plaintext password, or null for an invalid password
 	 * @param Password|null $existing Optional existing hash to get options from
 	 * @return Password
 	 */
 	public function newFromPlaintext( $password, Password $existing = null ) {
+		if ( $password === null ) {
+			return new InvalidPassword( $this, [ 'type' => '' ], null );
+		}
+
 		if ( $existing === null ) {
 			$config = $this->types[$this->default];
 			$obj = new $config['class']( $this, $config );
@@ -174,5 +187,38 @@ final class PasswordFactory {
 		} else {
 			return $password->needsUpdate();
 		}
+	}
+
+	/**
+	 * Generate a random string suitable for a password
+	 *
+	 * @param int $minLength Minimum length of password to generate
+	 * @return string
+	 */
+	public static function generateRandomPasswordString( $minLength = 10 ) {
+		// Decide the final password length based on our min password length,
+		// stopping at a minimum of 10 chars.
+		$length = max( 10, $minLength );
+		// Multiply by 1.25 to get the number of hex characters we need
+		// Generate random hex chars
+		$hex = MWCryptRand::generateHex( ceil( $length * 1.25 ) );
+		// Convert from base 16 to base 32 to get a proper password like string
+		return substr( Wikimedia\base_convert( $hex, 16, 32, $length ), -$length );
+	}
+
+	/**
+	 * Create an InvalidPassword
+	 *
+	 * @return InvalidPassword
+	 */
+	public static function newInvalidPassword() {
+		static $password = null;
+
+		if ( $password === null ) {
+			$factory = new self();
+			$password = new InvalidPassword( $factory, [ 'type' => '' ], null );
+		}
+
+		return $password;
 	}
 }

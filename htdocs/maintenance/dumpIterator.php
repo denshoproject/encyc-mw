@@ -40,7 +40,7 @@ abstract class DumpIterator extends Maintenance {
 
 	public function __construct() {
 		parent::__construct();
-		$this->mDescription = "Does something with a dump";
+		$this->addDescription( 'Does something with a dump' );
 		$this->addOption( 'file', 'File with text to run.', false, true );
 		$this->addOption( 'dump', 'XML dump to execute all revisions.', false, true );
 		$this->addOption( 'from', 'Article from XML dump to start from.', false, true );
@@ -54,7 +54,7 @@ abstract class DumpIterator extends Maintenance {
 		$this->checkOptions();
 
 		if ( $this->hasOption( 'file' ) ) {
-			$revision = new WikiRevision;
+			$revision = new WikiRevision( $this->getConfig() );
 
 			$revision->setText( file_get_contents( $this->getOption( 'file' ) ) );
 			$revision->setTitle( Title::newFromText(
@@ -73,10 +73,10 @@ abstract class DumpIterator extends Maintenance {
 			$this->error( "Sorry, I don't support dump filenames yet. "
 				. "Use - and provide it on stdin on the meantime.", true );
 		}
-		$importer = new WikiImporter( $source );
+		$importer = new WikiImporter( $source, $this->getConfig() );
 
 		$importer->setRevisionCallback(
-			array( &$this, 'handleRevision' ) );
+			[ $this, 'handleRevision' ] );
 
 		$this->from = $this->getOption( 'from', null );
 		$this->count = 0;
@@ -164,7 +164,7 @@ class SearchDump extends DumpIterator {
 
 	public function __construct() {
 		parent::__construct();
-		$this->mDescription = "Runs a regex in the revisions from a dump";
+		$this->addDescription( 'Runs a regex in the revisions from a dump' );
 		$this->addOption( 'regex', 'Searching regex', true, true );
 	}
 

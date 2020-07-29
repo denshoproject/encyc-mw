@@ -32,9 +32,8 @@ class OldChangesList extends ChangesList {
 	 * @return string|bool
 	 */
 	public function recentChangesLine( &$rc, $watched = false, $linenumber = null ) {
-		wfProfileIn( __METHOD__ );
 
-		$classes = array();
+		$classes = $this->getHTMLClasses( $rc, $watched );
 		// use mw-line-even/mw-line-odd class only if linenumber is given (feature from bug 14468)
 		if ( $linenumber ) {
 			if ( $linenumber & 1 ) {
@@ -44,11 +43,6 @@ class OldChangesList extends ChangesList {
 			}
 		}
 
-		// Indicate watched status on the line to allow for more
-		// comprehensive styling.
-		$classes[] = $watched && $rc->mAttribs['rc_timestamp'] >= $watched
-			? 'mw-changeslist-line-watched' : 'mw-changeslist-line-not-watched';
-
 		$html = $this->formatChangeLine( $rc, $classes, $watched );
 
 		if ( $this->watchlist ) {
@@ -56,13 +50,11 @@ class OldChangesList extends ChangesList {
 				$rc->mAttribs['rc_namespace'] . '-' . $rc->mAttribs['rc_title'] );
 		}
 
-		if ( !wfRunHooks( 'OldChangesListRecentChangesLine', array( &$this, &$html, $rc, &$classes ) ) ) {
-			wfProfileOut( __METHOD__ );
-
+		// Avoid PHP 7.1 warning from passing $this by reference
+		$list = $this;
+		if ( !Hooks::run( 'OldChangesListRecentChangesLine', [ &$list, &$html, $rc, &$classes ] ) ) {
 			return false;
 		}
-
-		wfProfileOut( __METHOD__ );
 
 		$dateheader = ''; // $html now contains only <li>...</li>, for hooks' convenience.
 		$this->insertDateHeader( $dateheader, $rc->mAttribs['rc_timestamp'] );
@@ -73,16 +65,22 @@ class OldChangesList extends ChangesList {
 	/**
 	 * @param RecentChange $rc
 	 * @param string[] &$classes
-	 * @param boolean $watched
+	 * @param bool $watched
 	 *
 	 * @return string
 	 */
 	private function formatChangeLine( RecentChange $rc, array &$classes, $watched ) {
 		$html = '';
+		$unpatrolled = $this->showAsUnpatrolled( $rc );
 
 		if ( $rc->mAttribs['rc_log_type'] ) {
 			$logtitle = SpecialPage::getTitleFor( 'Log', $rc->mAttribs['rc_log_type'] );
 			$this->insertLog( $html, $logtitle, $rc->mAttribs['rc_log_type'] );
+			$flags = $this->recentChangesFlags( [ 'unpatrolled' =>$unpatrolled,
+				'bot' => $rc->mAttribs['rc_bot'] ], '' );
+			if ( $flags !== '' ) {
+				$html .= ' ' . $flags;
+			}
 		// Log entries (old format) or log targets, and special pages
 		} elseif ( $rc->mAttribs['rc_namespace'] == NS_SPECIAL ) {
 			list( $name, $htmlubpage ) = SpecialPageFactory::resolveAlias( $rc->mAttribs['rc_title'] );
@@ -91,20 +89,18 @@ class OldChangesList extends ChangesList {
 			}
 		// Regular entries
 		} else {
-			$unpatrolled = $this->showAsUnpatrolled( $rc );
-
-			$this->insertDiffHist( $html, $rc, $unpatrolled );
+			$this->insertDiffHist( $html, $rc );
 			# M, N, b and ! (minor, new, bot and unpatrolled)
 			$html .= $this->recentChangesFlags(
-				array(
+				[
 					'newpage' => $rc->mAttribs['rc_type'] == RC_NEW,
 					'minor' => $rc->mAttribs['rc_minor'],
 					'unpatrolled' => $unpatrolled,
 					'bot' => $rc->mAttribs['rc_bot']
-				),
+				],
 				''
 			);
-			$this->insertArticleLink( $html, $rc, $unpatrolled, $watched );
+			$html .= $this->getArticleLink( $rc, $unpatrolled, $watched );
 		}
 		# Edit/log timestamp
 		$this->insertTimestamp( $html, $rc );
@@ -118,6 +114,8 @@ class OldChangesList extends ChangesList {
 
 		if ( $rc->mAttribs['rc_type'] == RC_LOG ) {
 			$html .= $this->insertLogEntry( $rc );
+		} elseif ( $this->isCategorizationWithoutRevision( $rc ) ) {
+			$html .= $this->insertComment( $rc );
 		} else {
 			# User tool links
 			$this->insertUserRelatedLinks( $html, $rc );

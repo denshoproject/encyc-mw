@@ -2,6 +2,10 @@
 	'use strict';
 
 	/**
+	 * Fired after an edit was successfully saved.
+	 *
+	 * Does not fire for null edits.
+	 *
 	 * @event postEdit
 	 * @member mw.hook
 	 * @param {Object} [data] Optional data
@@ -24,20 +28,26 @@
 		cookieVal = mw.cookie.get( cookieKey ),
 		$div, id;
 
+	function removeConfirmation() {
+		$div.remove();
+		mw.hook( 'postEdit.afterRemoval' ).fire();
+	}
+
+	function fadeOutConfirmation() {
+		clearTimeout( id );
+		$div.find( '.postedit' ).addClass( 'postedit postedit-faded' );
+		setTimeout( removeConfirmation, 500 );
+
+		return false;
+	}
+
 	function showConfirmation( data ) {
 		data = data || {};
 		if ( data.message === undefined ) {
 			data.message = $.parseHTML( mw.message( 'postedit-confirmation-saved', data.user || mw.user ).escaped() );
 		}
 
-		$div = $(
-			'<div class="postedit-container">' +
-				'<div class="postedit">' +
-					'<div class="postedit-icon postedit-icon-checkmark postedit-content"></div>' +
-					'<a href="#" class="postedit-close">&times;</a>' +
-				'</div>' +
-			'</div>'
-		);
+		$div = mw.template.get( 'mediawiki.action.view.postEdit', 'postEdit.html' ).render();
 
 		if ( typeof data.message === 'string' ) {
 			$div.find( '.postedit-content' ).text( data.message );
@@ -52,19 +62,6 @@
 		id = setTimeout( fadeOutConfirmation, 3000 );
 	}
 
-	function fadeOutConfirmation() {
-		clearTimeout( id );
-		$div.find( '.postedit' ).addClass( 'postedit postedit-faded' );
-		setTimeout( removeConfirmation, 500 );
-
-		return false;
-	}
-
-	function removeConfirmation() {
-		$div.remove();
-		mw.hook( 'postEdit.afterRemoval' ).fire();
-	}
-
 	mw.hook( 'postEdit' ).add( showConfirmation );
 
 	if ( config.wgAction === 'view' && cookieVal ) {
@@ -75,7 +72,7 @@
 			// postedit-confirmation-saved
 			// postedit-confirmation-created
 			// postedit-confirmation-restored
-			'message': mw.msg(
+			message: mw.msg(
 				'postedit-confirmation-' + cookieVal,
 				mw.user
 			)
@@ -83,4 +80,4 @@
 		mw.cookie.set( cookieKey, null );
 	}
 
-} ( mediaWiki, jQuery ) );
+}( mediaWiki, jQuery ) );

@@ -77,13 +77,13 @@ class MWCryptHKDF {
 	 * a "context information" string CTXinfo (which may be null)
 	 * See http://eprint.iacr.org/2010/264.pdf Section 4.1
 	 */
-	protected $context = array();
+	protected $context = [];
 
 	/**
 	 * Round count is computed based on the hash'es output length,
 	 * which neither php nor openssl seem to provide easily.
 	 */
-	public static $hashLength = array(
+	public static $hashLength = [
 		'md5' => 16,
 		'sha1' => 20,
 		'sha224' => 28,
@@ -95,14 +95,14 @@ class MWCryptHKDF {
 		'ripemd256' => 32,
 		'ripemd320' => 40,
 		'whirlpool' => 64,
-	);
-
+	];
 
 	/**
 	 * @param string $secretKeyMaterial
 	 * @param string $algorithm Name of hashing algorithm
 	 * @param BagOStuff $cache
 	 * @param string|array $context Context to mix into HKDF context
+	 * @throws MWException
 	 */
 	public function __construct( $secretKeyMaterial, $algorithm, $cache, $context ) {
 		if ( strlen( $secretKeyMaterial ) < 16 ) {
@@ -113,7 +113,7 @@ class MWCryptHKDF {
 		$this->cache = $cache;
 		$this->salt = ''; // Initialize a blank salt, see getSaltUsingCache()
 		$this->prk = '';
-		$this->context = is_array( $context ) ? $context : array( $context );
+		$this->context = is_array( $context ) ? $context : [ $context ];
 
 		// To prevent every call from hitting the same memcache server, pick
 		// from a set of keys to use. mt_rand is only use to pick a random
@@ -157,9 +157,10 @@ class MWCryptHKDF {
 	/**
 	 * Return a singleton instance, based on the global configs.
 	 * @return HKDF
+	 * @throws MWException
 	 */
 	protected static function singleton() {
-		global $wgHKDFAlgorithm, $wgHKDFSecret, $wgSecretKey;
+		global $wgHKDFAlgorithm, $wgHKDFSecret, $wgSecretKey, $wgMainCacheType;
 
 		$secret = $wgHKDFSecret ?: $wgSecretKey;
 		if ( !$secret ) {
@@ -168,17 +169,13 @@ class MWCryptHKDF {
 
 		// In HKDF, the context can be known to the attacker, but this will
 		// keep simultaneous runs from producing the same output.
-		$context = array();
+		$context = [];
 		$context[] = microtime();
 		$context[] = getmypid();
 		$context[] = gethostname();
 
 		// Setup salt cache. Use APC, or fallback to the main cache if it isn't setup
-		try {
-			$cache = ObjectCache::newAccelerator( array() );
-		} catch ( Exception $e ) {
-			$cache = wfGetMainCache();
-		}
+		$cache = ObjectCache::getLocalServerInstance( $wgMainCacheType );
 
 		if ( is_null( self::$singleton ) ) {
 			self::$singleton = new self( $secret, $wgHKDFAlgorithm, $cache, $context );
@@ -205,7 +202,7 @@ class MWCryptHKDF {
 			);
 		}
 
-		$CTXinfo = implode( ':', array_merge( $this->context, array( $context ) ) );
+		$CTXinfo = implode( ':', array_merge( $this->context, [ $context ] ) );
 
 		return self::HKDFExpand(
 			$this->algorithm,
@@ -215,7 +212,6 @@ class MWCryptHKDF {
 			$this->lastK
 		);
 	}
-
 
 	/**
 	 * RFC5869 defines HKDF in 2 steps, extraction and expansion.
@@ -271,14 +267,15 @@ class MWCryptHKDF {
 	 *
 	 * @param string $hash Hashing Algorithm
 	 * @param string $prk A pseudorandom key of at least HashLen octets
-	 * 	(usually, the output from the extract step)
+	 *    (usually, the output from the extract step)
 	 * @param string $info Optional context and application specific information
-	 * 	(can be a zero-length string)
+	 *    (can be a zero-length string)
 	 * @param int $bytes Length of output keying material in bytes
-	 * 	(<= 255*HashLen)
+	 *    (<= 255*HashLen)
 	 * @param string &$lastK Set by this function to the last block of the expansion.
-	 *	In MediaWiki, this is used to seed future Extractions.
+	 *    In MediaWiki, this is used to seed future Extractions.
 	 * @return string Cryptographically secure random string $bytes long
+	 * @throws MWException
 	 */
 	private static function HKDFExpand( $hash, $prk, $info, $bytes, &$lastK = '' ) {
 		$hashLen = MWCryptHKDF::$hashLength[$hash];

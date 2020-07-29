@@ -42,7 +42,6 @@ class CreditsAction extends FormlessAction {
 	 * @return string HTML
 	 */
 	public function onView() {
-		wfProfileIn( __METHOD__ );
 
 		if ( $this->page->getID() == 0 ) {
 			$s = $this->msg( 'nocredits' )->parse();
@@ -50,9 +49,7 @@ class CreditsAction extends FormlessAction {
 			$s = $this->getCredits( -1 );
 		}
 
-		wfProfileOut( __METHOD__ );
-
-		return Html::rawElement( 'div', array( 'id' => 'mw-credits' ), $s );
+		return Html::rawElement( 'div', [ 'id' => 'mw-credits' ], $s );
 	}
 
 	/**
@@ -63,7 +60,6 @@ class CreditsAction extends FormlessAction {
 	 * @return string Html
 	 */
 	public function getCredits( $cnt, $showIfMax = true ) {
-		wfProfileIn( __METHOD__ );
 		$s = '';
 
 		if ( $cnt != 0 ) {
@@ -72,8 +68,6 @@ class CreditsAction extends FormlessAction {
 				$s .= ' ' . $this->getContributors( $cnt - 1, $showIfMax );
 			}
 		}
-
-		wfProfileOut( __METHOD__ );
 
 		return $s;
 	}
@@ -131,9 +125,9 @@ class CreditsAction extends FormlessAction {
 			}
 		}
 
-		$real_names = array();
-		$user_names = array();
-		$anon_ips = array();
+		$real_names = [];
+		$user_names = [];
+		$anon_ips = [];
 
 		# Sift for real versus user names
 		/** @var $user User */
@@ -179,8 +173,8 @@ class CreditsAction extends FormlessAction {
 		}
 
 		# This is the big list, all mooshed together. We sift for blank strings
-		$fulllist = array();
-		foreach ( array( $real, $user, $anon, $others_link ) as $s ) {
+		$fulllist = [];
+		foreach ( [ $real, $user, $anon, $others_link ] as $s ) {
 			if ( $s !== false ) {
 				array_push( $fulllist, $s );
 			}
@@ -240,8 +234,8 @@ class CreditsAction extends FormlessAction {
 		return Linker::linkKnown(
 			$this->getTitle(),
 			$this->msg( 'others' )->escaped(),
-			array(),
-			array( 'action' => 'credits' )
+			[],
+			[ 'action' => 'credits' ]
 		);
 	}
 }

@@ -35,11 +35,9 @@ class SkinVector extends SkinTemplate {
 	 */
 	private $vectorConfig;
 
-	public function __construct( Config $config ) {
-		$this->vectorConfig = $config;
+	public function __construct() {
+		$this->vectorConfig = ConfigFactory::getDefaultInstance()->makeConfig( 'vector' );
 	}
-
-	protected static $bodyClasses = array( 'vector-animateLayout' );
 
 	/**
 	 * Initializes output page and sets up skin-specific parameters
@@ -48,17 +46,12 @@ class SkinVector extends SkinTemplate {
 	public function initPage( OutputPage $out ) {
 		parent::initPage( $out );
 
-		// Append CSS which includes IE only behavior fixes for hover support -
-		// this is better than including this in a CSS file since it doesn't
-		// wait for the CSS file to load before fetching the HTC file.
-		$min = $this->getRequest()->getFuzzyBool( 'debug' ) ? '' : '.min';
-		$out->addHeadItem( 'csshover',
-			'<!--[if lt IE 7]><style type="text/css">body{behavior:url("' .
-				htmlspecialchars( $this->getConfig()->get( 'LocalStylePath' ) ) .
-				"/{$this->stylename}/csshover{$min}.htc\")}</style><![endif]-->"
-		);
+		if ( $this->vectorConfig->get( 'VectorResponsive' ) ) {
+			$out->addMeta( 'viewport', 'width=device-width, initial-scale=1' );
+			$out->addModuleStyles( 'skins.vector.styles.responsive' );
+		}
 
-		$out->addModules( array( 'skins.vector.js' ) );
+		$out->addModules( 'skins.vector.js' );
 	}
 
 	/**
@@ -68,8 +61,8 @@ class SkinVector extends SkinTemplate {
 	function setupSkinUserCss( OutputPage $out ) {
 		parent::setupSkinUserCss( $out );
 
-		$styles = array( 'mediawiki.skinning.interface', 'skins.vector.styles' );
-		wfRunHooks( 'SkinVectorStyleModules', array( $this, &$styles ) );
+		$styles = [ 'mediawiki.skinning.interface', 'skins.vector.styles' ];
+		Hooks::run( 'SkinVectorStyleModules', [ $this, &$styles ] );
 		$out->addModuleStyles( $styles );
 	}
 
@@ -78,19 +71,5 @@ class SkinVector extends SkinTemplate {
 	 */
 	public function setupTemplate( $classname, $repository = false, $cache_dir = false ) {
 		return new $classname( $this->vectorConfig );
-	}
-
-	/**
-	 * Adds classes to the body element.
-	 *
-	 * @param OutputPage $out
-	 * @param array &$bodyAttrs Array of attributes that will be set on the body element
-	 */
-	function addToBodyAttributes( $out, &$bodyAttrs ) {
-		if ( isset( $bodyAttrs['class'] ) && strlen( $bodyAttrs['class'] ) > 0 ) {
-			$bodyAttrs['class'] .= ' ' . implode( ' ', static::$bodyClasses );
-		} else {
-			$bodyAttrs['class'] = implode( ' ', static::$bodyClasses );
-		}
 	}
 }

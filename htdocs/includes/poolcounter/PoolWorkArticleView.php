@@ -19,7 +19,7 @@
  */
 
 class PoolWorkArticleView extends PoolCounterWork {
-	/** @var Page */
+	/** @var WikiPage */
 	private $page;
 
 	/** @var string */
@@ -44,7 +44,7 @@ class PoolWorkArticleView extends PoolCounterWork {
 	private $error = false;
 
 	/**
-	 * @param Page $page
+	 * @param WikiPage $page
 	 * @param ParserOptions $parserOptions ParserOptions to use for the parse
 	 * @param int $revid ID of the revision being parsed.
 	 * @param bool $useParserCache Whether to use the parser cache.
@@ -52,7 +52,7 @@ class PoolWorkArticleView extends PoolCounterWork {
 	 * @param Content|string $content Content to parse or null to load it; may
 	 *   also be given as a wikitext string, for BC.
 	 */
-	public function __construct( Page $page, ParserOptions $parserOptions,
+	public function __construct( WikiPage $page, ParserOptions $parserOptions,
 		$revid, $useParserCache, $content = null
 	) {
 		if ( is_string( $content ) ) { // BC: old style call
@@ -67,7 +67,8 @@ class PoolWorkArticleView extends PoolCounterWork {
 		$this->parserOptions = $parserOptions;
 		$this->content = $content;
 		$this->cacheKey = ParserCache::singleton()->getKey( $page, $parserOptions );
-		parent::__construct( 'ArticleView', $this->cacheKey . ':revid:' . $revid );
+		$keyPrefix = $this->cacheKey ?: wfMemcKey( 'articleview', 'missingcachekey' );
+		parent::__construct( 'ArticleView', $keyPrefix . ':revid:' . $revid );
 	}
 
 	/**
@@ -141,8 +142,13 @@ class PoolWorkArticleView extends PoolCounterWork {
 
 		// Timing hack
 		if ( $time > 3 ) {
-			wfDebugLog( 'slow-parse', sprintf( "%-5.2f %s", $time,
-				$this->page->getTitle()->getPrefixedDBkey() ) );
+			// TODO: Use Parser's logger (once it has one)
+			$logger = MediaWiki\Logger\LoggerFactory::getInstance( 'slow-parse' );
+			$logger->info( '{time} {title}', [
+				'time' => number_format( $time, 2 ),
+				'title' => $this->page->getTitle()->getPrefixedDBkey(),
+				'trigger' => 'view',
+			] );
 		}
 
 		if ( $this->cacheable && $this->parserOutput->isCacheable() && $isCurrent ) {
@@ -153,12 +159,12 @@ class PoolWorkArticleView extends PoolCounterWork {
 		// Make sure file cache is not used on uncacheable content.
 		// Output that has magic words in it can still use the parser cache
 		// (if enabled), though it will generally expire sooner.
-		if ( !$this->parserOutput->isCacheable() || $this->parserOutput->containsOldMagic() ) {
+		if ( !$this->parserOutput->isCacheable() ) {
 			$wgUseFileCache = false;
 		}
 
 		if ( $isCurrent ) {
-			$this->page->doCascadeProtectionUpdates( $this->parserOutput );
+			$this->page->triggerOpportunisticLinksUpdate( $this->parserOutput );
 		}
 
 		return true;

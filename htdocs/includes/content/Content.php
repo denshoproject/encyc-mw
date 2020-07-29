@@ -243,7 +243,7 @@ interface Content {
 	 *
 	 * @since 1.21
 	 *
-	 * @param bool $hasLinks If it is known whether this content contains
+	 * @param bool|null $hasLinks If it is known whether this content contains
 	 *    links, provide this information here, to avoid redundant parsing to
 	 *    find out.
 	 *
@@ -291,6 +291,9 @@ interface Content {
 	 *
 	 * Subclasses may implement this to determine the necessary updates more
 	 * efficiently, or make use of information about the old content.
+	 *
+	 * @note Implementations should call the SecondaryDataUpdates hook, like
+	 *   AbstractContent does.
 	 *
 	 * @param Title $title The context for determining the necessary updates
 	 * @param Content $old An optional Content object representing the
@@ -442,7 +445,7 @@ interface Content {
 	 *
 	 * @return Content
 	 */
-	public function preloadTransform( Title $title, ParserOptions $parserOptions, $params = array() );
+	public function preloadTransform( Title $title, ParserOptions $parserOptions, $params = [] );
 
 	/**
 	 * Prepare Content for saving. Called before Content is saved by WikiPage::doEditContent() and in
@@ -461,7 +464,7 @@ interface Content {
 	 *
 	 * @param WikiPage $page The page to be saved.
 	 * @param int $flags Bitfield for use with EDIT_XXX constants, see WikiPage::doEditContent()
-	 * @param int $baseRevId The ID of the current revision
+	 * @param int $parentRevId The ID of the current revision
 	 * @param User $user
 	 *
 	 * @return Status A status object indicating whether the content was
@@ -470,7 +473,7 @@ interface Content {
 	 *
 	 * @see WikiPage::doEditContent()
 	 */
-	public function prepareSave( WikiPage $page, $flags, $baseRevId, User $user );
+	public function prepareSave( WikiPage $page, $flags, $parentRevId, User $user );
 
 	/**
 	 * Returns a list of updates to perform when this content is deleted.

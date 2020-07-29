@@ -76,7 +76,7 @@ clean-app: clean-encyc-mw
 install-encyc-mw:
 	@echo ""
 	@echo "encyc-mw --------------------------------------------------------------"
-	apt-get --assume-yes install imagemagick libjpeg-turbo-progs nginx php-pear php-cgi php-cli php-fpm php-mysql tidy
+	apt-get --assume-yes install imagemagick libjpeg-turbo-progs memcached nginx php-pear php-cgi php-cli php-fpm php-mbstring php-mysql tidy
 
 test-encyc-mw:
 

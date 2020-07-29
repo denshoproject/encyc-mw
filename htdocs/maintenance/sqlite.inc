@@ -49,17 +49,17 @@ class Sqlite {
 			throw new MWException( "Can't check SQL syntax: SQLite not found" );
 		}
 		if ( !is_array( $files ) ) {
-			$files = array( $files );
+			$files = [ $files ];
 		}
 
-		$allowedTypes = array_flip( array(
+		$allowedTypes = array_flip( [
 			'integer',
 			'real',
 			'text',
 			'blob', // NULL type is omitted intentionally
-		) );
+		] );
 
-		$db = new DatabaseSqliteStandalone( ':memory:' );
+		$db = DatabaseSqlite::newStandaloneInstance( ':memory:' );
 		try {
 			foreach ( $files as $file ) {
 				$err = $db->sourceFile( $file );

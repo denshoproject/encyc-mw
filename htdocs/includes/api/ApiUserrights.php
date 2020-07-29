@@ -32,12 +32,36 @@ class ApiUserrights extends ApiBase {
 
 	private $mUser = null;
 
+	/**
+	 * Get a UserrightsPage object, or subclass.
+	 * @return UserrightsPage
+	 */
+	protected function getUserRightsPage() {
+		return new UserrightsPage;
+	}
+
+	/**
+	 * Get all available groups.
+	 * @return array
+	 */
+	protected function getAllGroups() {
+		return User::getAllGroups();
+	}
+
 	public function execute() {
+		$pUser = $this->getUser();
+
+		// Deny if the user is blocked and doesn't have the full 'userrights' permission.
+		// This matches what Special:UserRights does for the web UI.
+		if ( $pUser->isBlocked() && !$pUser->isAllowed( 'userrights' ) ) {
+			$this->dieBlocked( $pUser->getBlock() );
+		}
+
 		$params = $this->extractRequestParams();
 
 		$user = $this->getUrUser( $params );
 
-		$form = new UserrightsPage;
+		$form = $this->getUserRightsPage();
 		$form->setContext( $this->getContext() );
 		$r['user'] = $user->getName();
 		$r['userid'] = $user->getId();
@@ -47,8 +71,8 @@ class ApiUserrights extends ApiBase {
 		);
 
 		$result = $this->getResult();
-		$result->setIndexedTagName( $r['added'], 'group' );
-		$result->setIndexedTagName( $r['removed'], 'group' );
+		ApiResult::setIndexedTagName( $r['added'], 'group' );
+		ApiResult::setIndexedTagName( $r['removed'], 'group' );
 		$result->addValue( null, $this->getModuleName(), $r );
 	}
 
@@ -65,7 +89,7 @@ class ApiUserrights extends ApiBase {
 
 		$user = isset( $params['user'] ) ? $params['user'] : '#' . $params['userid'];
 
-		$form = new UserrightsPage;
+		$form = $this->getUserRightsPage();
 		$form->setContext( $this->getContext() );
 		$status = $form->fetchUser( $user );
 		if ( !$status->isOK() ) {
@@ -86,43 +110,29 @@ class ApiUserrights extends ApiBase {
 	}
 
 	public function getAllowedParams() {
-		return array(
-			'user' => array(
-				ApiBase::PARAM_TYPE => 'string',
-			),
-			'userid' => array(
+		return [
+			'user' => [
+				ApiBase::PARAM_TYPE => 'user',
+			],
+			'userid' => [
 				ApiBase::PARAM_TYPE => 'integer',
-			),
-			'add' => array(
-				ApiBase::PARAM_TYPE => User::getAllGroups(),
+			],
+			'add' => [
+				ApiBase::PARAM_TYPE => $this->getAllGroups(),
 				ApiBase::PARAM_ISMULTI => true
-			),
-			'remove' => array(
-				ApiBase::PARAM_TYPE => User::getAllGroups(),
+			],
+			'remove' => [
+				ApiBase::PARAM_TYPE => $this->getAllGroups(),
 				ApiBase::PARAM_ISMULTI => true
-			),
-			'reason' => array(
+			],
+			'reason' => [
 				ApiBase::PARAM_DFLT => ''
-			)
-		);
-	}
-
-	public function getParamDescription() {
-		return array(
-			'user' => 'User name',
-			'userid' => 'User id',
-			'add' => 'Add the user to these groups',
-			'remove' => 'Remove the user from these groups',
-			'token' => array(
-				/* Standard description automatically prepended */
-				'For compatibility, the token used in the web UI is also accepted.'
-			),
-			'reason' => 'Reason for the change',
-		);
-	}
-
-	public function getDescription() {
-		return 'Add/remove a user to/from groups.';
+			],
+			'token' => [
+				// Standard definition automatically inserted
+				ApiBase::PARAM_HELP_MSG_APPEND => [ 'api-help-param-token-webui' ],
+			],
+		];
 	}
 
 	public function needsToken() {
@@ -133,11 +143,13 @@ class ApiUserrights extends ApiBase {
 		return $this->getUrUser( $params )->getName();
 	}
 
-	public function getExamples() {
-		return array(
-			'api.php?action=userrights&user=FooBot&add=bot&remove=sysop|bureaucrat&token=123ABC',
-			'api.php?action=userrights&userid=123&add=bot&remove=sysop|bureaucrat&token=123ABC'
-		);
+	protected function getExamplesMessages() {
+		return [
+			'action=userrights&user=FooBot&add=bot&remove=sysop|bureaucrat&token=123ABC'
+				=> 'apihelp-userrights-example-user',
+			'action=userrights&userid=123&add=bot&remove=sysop|bureaucrat&token=123ABC'
+				=> 'apihelp-userrights-example-userid',
+		];
 	}
 
 	public function getHelpUrls() {

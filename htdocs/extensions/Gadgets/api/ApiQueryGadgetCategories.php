@@ -20,11 +20,18 @@
  */
 
 class ApiQueryGadgetCategories extends ApiQueryBase {
-	private $props,
-		$neededNames;
+	/**
+	 * @var array
+	 */
+	private $props;
 
-	public function __construct( $query, $moduleName ) {
-		parent::__construct( $query, $moduleName, 'gc' );
+	/**
+	 * @var array|bool
+	 */
+	private $neededNames;
+
+	public function __construct( ApiQuery $queryModule, $moduleName ) {
+		parent::__construct( $queryModule, $moduleName, 'gc' );
 	}
 
 	public function execute() {
@@ -42,7 +49,7 @@ class ApiQueryGadgetCategories extends ApiQueryBase {
 	private function getList() {
 		$data = array();
 		$result = $this->getResult();
-		$gadgets = Gadget::loadStructuredList();
+		$gadgets = GadgetRepo::singleton()->getStructuredList();
 
 		if ( $gadgets ) {
 			foreach ( $gadgets as $category => $list ) {
@@ -88,35 +95,15 @@ class ApiQueryGadgetCategories extends ApiQueryBase {
 		);
 	}
 
-	public function getDescription() {
-		return 'Returns a list of gadget categories';
-	}
-
-	public function getParamDescription() {
+	/**
+	 * @see ApiBase::getExamplesMessages()
+	 */
+	protected function getExamplesMessages() {
 		return array(
-			'prop' => array(
-				'What gadget category information to get:',
-				' name     - Internal category name',
-				' title    - Category title',
-				' members  - Number of gadgets in category',
-			),
-			'names' => 'Name(s) of categories to retrieve',
+			'action=query&list=gadgetcategories'
+				=> 'apihelp-query+gadgetcategories-example-1',
+			'action=query&list=gadgetcategories&gcnames=foo|bar&gcprop=name|title|members'
+				=> 'apihelp-query+gadgetcategories-example-2',
 		);
-	}
-
-	public function getExamples() {
-		$params = $this->getAllowedParams();
-		$allProps = implode( '|', $params['prop'][ApiBase::PARAM_TYPE] );
-
-		return array(
-			'Get a list of existing gadget categories:',
-			'    api.php?action=query&list=gadgetcategories',
-			'Get all information about categories named "foo" and "bar":',
-			"    api.php?action=query&list=gadgetcategories&gcnames=foo|bar&gcprop=$allProps",
-		);
-	}
-
-	public function getVersion() {
-		return __CLASS__ . ': $Id$';
 	}
 }

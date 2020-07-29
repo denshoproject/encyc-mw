@@ -37,6 +37,7 @@ class TextContent extends AbstractContent {
 	/**
 	 * @param string $text
 	 * @param string $model_id
+	 * @throws MWException
 	 */
 	public function __construct( $text, $model_id = CONTENT_MODEL_TEXT ) {
 		parent::__construct( $model_id );
@@ -91,7 +92,7 @@ class TextContent extends AbstractContent {
 	 * Returns true if this content is not a redirect, and $wgArticleCountMethod
 	 * is "any".
 	 *
-	 * @param bool $hasLinks If it is known whether this content contains links,
+	 * @param bool|null $hasLinks If it is known whether this content contains links,
 	 * provide this information here, to avoid redundant parsing to find out.
 	 *
 	 * @return bool

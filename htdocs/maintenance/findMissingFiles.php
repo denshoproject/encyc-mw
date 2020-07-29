@@ -25,8 +25,8 @@ class FindMissingFiles extends Maintenance {
 	function __construct() {
 		parent::__construct();
 
-		$this->mDescription = 'Find registered files with no corresponding file.';
-		$this->addOption( 'start', 'Starting file name', false, true );
+		$this->addDescription( 'Find registered files with no corresponding file.' );
+		$this->addOption( 'start', 'Start after this file name', false, true );
 		$this->addOption( 'mtimeafter', 'Only include files changed since this time', false, true );
 		$this->addOption( 'mtimebefore', 'Only includes files changed before this time', false, true );
 		$this->setBatchSize( 300 );
@@ -42,41 +42,45 @@ class FindMissingFiles extends Maintenance {
 		$mtime1 = $dbr->timestampOrNull( $this->getOption( 'mtimeafter', null ) );
 		$mtime2 = $dbr->timestampOrNull( $this->getOption( 'mtimebefore', null ) );
 
-		$joinTables = array( 'image' );
-		$joinConds = array( 'image' => array( 'INNER JOIN', 'img_name = page_title' ) );
+		$joinTables = [];
+		$joinConds = [];
 		if ( $mtime1 || $mtime2 ) {
+			$joinTables[] = 'page';
+			$joinConds['page'] = [ 'INNER JOIN',
+				[ 'page_title = img_name', 'page_namespace' => NS_FILE ] ];
 			$joinTables[] = 'logging';
-			$on = array( 'log_page = page_id', 'log_type' => array( 'upload', 'move', 'delete' ) );
+			$on = [ 'log_page = page_id', 'log_type' => [ 'upload', 'move', 'delete' ] ];
 			if ( $mtime1 ) {
 				$on[] = "log_timestamp > {$dbr->addQuotes($mtime1)}";
 			}
 			if ( $mtime2 ) {
 				$on[] = "log_timestamp < {$dbr->addQuotes($mtime2)}";
 			}
-			$joinConds['logging'] = array( 'INNER JOIN', $on );
+			$joinConds['logging'] = [ 'INNER JOIN', $on ];
 		}
 
 		do {
 			$res = $dbr->select(
-				array_merge( array( 'page' ), $joinTables ),
-				array( 'img_name' => 'DISTINCT(page_title)' ),
-				array( 'page_namespace' => NS_FILE,
-					"page_title >= " . $dbr->addQuotes( $lastName ) ),
+				array_merge( [ 'image' ], $joinTables ),
+				[ 'name' => 'img_name' ],
+				[ "img_name > " . $dbr->addQuotes( $lastName ) ],
 				__METHOD__,
-				array( 'ORDER BY' => 'page_title', 'LIMIT' => $this->mBatchSize ),
+				// DISTINCT causes a pointless filesort
+				[ 'ORDER BY' => 'name', 'GROUP BY' => 'name',
+					'LIMIT' => $this->mBatchSize ],
 				$joinConds
 			);
 
 			// Check if any of these files are missing...
-			$pathsByName = array();
+			$pathsByName = [];
 			foreach ( $res as $row ) {
-				$file = $repo->newFile( $row->img_name );
-				$pathsByName[$row->img_name] = $file->getPath();
-				$lastName = $row->img_name;
+				$file = $repo->newFile( $row->name );
+				$pathsByName[$row->name] = $file->getPath();
+				$lastName = $row->name;
 			}
-			$be->preloadFileStat( array( 'srcs' => $pathsByName ) );
+			$be->preloadFileStat( [ 'srcs' => $pathsByName ] );
 			foreach ( $pathsByName as $path ) {
-				if ( $be->fileExists( array( 'src' => $path ) ) === false ) {
+				if ( $be->fileExists( [ 'src' => $path ] ) === false ) {
 					$this->output( "$path\n" );
 				}
 			}
@@ -84,12 +88,12 @@ class FindMissingFiles extends Maintenance {
 			// Find all missing old versions of any of the files in this batch...
 			if ( count( $pathsByName ) ) {
 				$ores = $dbr->select( 'oldimage',
-					array( 'oi_name', 'oi_archive_name' ),
-					array( 'oi_name' => array_keys( $pathsByName ) ),
+					[ 'oi_name', 'oi_archive_name' ],
+					[ 'oi_name' => array_keys( $pathsByName ) ],
 					__METHOD__
 				);
 
-				$checkPaths = array();
+				$checkPaths = [];
 				foreach ( $ores as $row ) {
 					if ( !strlen( $row->oi_archive_name ) ) {
 						continue; // broken row
@@ -99,9 +103,9 @@ class FindMissingFiles extends Maintenance {
 				}
 
 				foreach ( array_chunk( $checkPaths, $this->mBatchSize ) as $paths ) {
-					$be->preloadFileStat( array( 'srcs' => $paths ) );
+					$be->preloadFileStat( [ 'srcs' => $paths ] );
 					foreach ( $paths as $path ) {
-						if ( $be->fileExists( array( 'src' => $path ) ) === false ) {
+						if ( $be->fileExists( [ 'src' => $path ] ) === false ) {
 							$this->output( "$path\n" );
 						}
 					}

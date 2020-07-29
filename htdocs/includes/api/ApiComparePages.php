@@ -46,7 +46,7 @@ class ApiComparePages extends ApiBase {
 			true,
 			false );
 
-		$vals = array();
+		$vals = [];
 		if ( isset( $params['fromtitle'] ) ) {
 			$vals['fromtitle'] = $params['fromtitle'];
 		}
@@ -72,7 +72,7 @@ class ApiComparePages extends ApiBase {
 			);
 		}
 
-		ApiResult::setContent( $vals, $difftext );
+		ApiResult::setContentValue( $vals, 'body', $difftext );
 
 		$this->getResult()->addValue( null, $this->getModuleName(), $vals );
 	}
@@ -89,14 +89,14 @@ class ApiComparePages extends ApiBase {
 		} elseif ( $titleText ) {
 			$title = Title::newFromText( $titleText );
 			if ( !$title || $title->isExternal() ) {
-				$this->dieUsageMsg( array( 'invalidtitle', $titleText ) );
+				$this->dieUsageMsg( [ 'invalidtitle', $titleText ] );
 			}
 
 			return $title->getLatestRevID();
 		} elseif ( $titleId ) {
 			$title = Title::newFromID( $titleId );
 			if ( !$title ) {
-				$this->dieUsageMsg( array( 'nosuchpageid', $titleId ) );
+				$this->dieUsageMsg( [ 'nosuchpageid', $titleId ] );
 			}
 
 			return $title->getLatestRevID();
@@ -108,45 +108,28 @@ class ApiComparePages extends ApiBase {
 	}
 
 	public function getAllowedParams() {
-		return array(
+		return [
 			'fromtitle' => null,
-			'fromid' => array(
+			'fromid' => [
 				ApiBase::PARAM_TYPE => 'integer'
-			),
-			'fromrev' => array(
+			],
+			'fromrev' => [
 				ApiBase::PARAM_TYPE => 'integer'
-			),
+			],
 			'totitle' => null,
-			'toid' => array(
+			'toid' => [
 				ApiBase::PARAM_TYPE => 'integer'
-			),
-			'torev' => array(
+			],
+			'torev' => [
 				ApiBase::PARAM_TYPE => 'integer'
-			),
-		);
+			],
+		];
 	}
 
-	public function getParamDescription() {
-		return array(
-			'fromtitle' => 'First title to compare',
-			'fromid' => 'First page ID to compare',
-			'fromrev' => 'First revision to compare',
-			'totitle' => 'Second title to compare',
-			'toid' => 'Second page ID to compare',
-			'torev' => 'Second revision to compare',
-		);
-	}
-
-	public function getDescription() {
-		return array(
-			'Get the difference between 2 pages.',
-			'You must pass a revision number or a page title or a page ID id for each part (1 and 2).'
-		);
-	}
-
-	public function getExamples() {
-		return array(
-			'api.php?action=compare&fromrev=1&torev=2' => 'Create a diff between revision 1 and 2',
-		);
+	protected function getExamplesMessages() {
+		return [
+			'action=compare&fromrev=1&torev=2'
+				=> 'apihelp-compare-example-1',
+		];
 	}
 }

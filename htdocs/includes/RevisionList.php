@@ -30,6 +30,7 @@ abstract class RevisionListBase extends ContextSource {
 	/** @var array */
 	protected $ids;
 
+	/** @var ResultWrapper|bool */
 	protected $res;
 
 	/** @var bool|object */
@@ -120,7 +121,7 @@ abstract class RevisionListBase extends ContextSource {
 
 	/**
 	 * Do the DB query to iterate through the objects.
-	 * @param DatabaseBase $db DatabaseBase object to use for the query
+	 * @param IDatabase $db DB object to use for the query
 	 */
 	abstract public function doQuery( $db );
 
@@ -263,23 +264,23 @@ class RevisionList extends RevisionListBase {
 	}
 
 	/**
-	 * @param DatabaseBase $db
+	 * @param IDatabase $db
 	 * @return mixed
 	 */
 	public function doQuery( $db ) {
-		$conds = array( 'rev_page' => $this->title->getArticleID() );
+		$conds = [ 'rev_page' => $this->title->getArticleID() ];
 		if ( $this->ids !== null ) {
 			$conds['rev_id'] = array_map( 'intval', $this->ids );
 		}
 		return $db->select(
-			array( 'revision', 'page', 'user' ),
+			[ 'revision', 'page', 'user' ],
 			array_merge( Revision::selectFields(), Revision::selectUserFields() ),
 			$conds,
 			__METHOD__,
-			array( 'ORDER BY' => 'rev_id DESC' ),
-			array(
+			[ 'ORDER BY' => 'rev_id DESC' ],
+			[
 				'page' => Revision::pageJoinCond(),
-				'user' => Revision::userJoinCond() )
+				'user' => Revision::userJoinCond() ]
 		);
 	}
 
@@ -317,7 +318,7 @@ class RevisionItem extends RevisionItemBase {
 	}
 
 	public function getAuthorNameField() {
-		return 'user_name'; // see Revision::selectUserFields()
+		return 'rev_user_text';
 	}
 
 	public function canView() {
@@ -334,51 +335,59 @@ class RevisionItem extends RevisionItemBase {
 
 	/**
 	 * Get the HTML link to the revision text.
-	 * Overridden by RevDelArchiveItem.
+	 * @todo Essentially a copy of RevDelRevisionItem::getRevisionLink. That class
+	 * should inherit from this one, and implement an appropriate interface instead
+	 * of extending RevDelItem
 	 * @return string
 	 */
 	protected function getRevisionLink() {
-		$date = $this->list->getLanguage()->timeanddate( $this->revision->getTimestamp(), true );
+		$date = htmlspecialchars( $this->list->getLanguage()->userTimeAndDate(
+			$this->revision->getTimestamp(), $this->list->getUser() ) );
+
 		if ( $this->isDeleted() && !$this->canViewContent() ) {
 			return $date;
 		}
-		return Linker::link(
+		return Linker::linkKnown(
 			$this->list->title,
 			$date,
-			array(),
-			array(
+			[],
+			[
 				'oldid' => $this->revision->getId(),
 				'unhide' => 1
-			)
+			]
 		);
 	}
 
 	/**
 	 * Get the HTML link to the diff.
-	 * Overridden by RevDelArchiveItem
+	 * @todo Essentially a copy of RevDelRevisionItem::getDiffLink. That class
+	 * should inherit from this one, and implement an appropriate interface instead
+	 * of extending RevDelItem
 	 * @return string
 	 */
 	protected function getDiffLink() {
 		if ( $this->isDeleted() && !$this->canViewContent() ) {
 			return $this->context->msg( 'diff' )->escaped();
 		} else {
-			return Linker::link(
+			return Linker::linkKnown(
 					$this->list->title,
-					$this->context->msg( 'diff' )->escaped(),
-					array(),
-					array(
+					$this->list->msg( 'diff' )->escaped(),
+					[],
+					[
 						'diff' => $this->revision->getId(),
 						'oldid' => 'prev',
 						'unhide' => 1
-					),
-					array(
-						'known',
-						'noclasses'
-					)
+					]
 				);
 		}
 	}
 
+	/**
+	 * @todo Essentially a copy of RevDelRevisionItem::getHTML. That class
+	 * should inherit from this one, and implement an appropriate interface instead
+	 * of extending RevDelItem
+	 * @return string
+	 */
 	public function getHTML() {
 		$difflink = $this->context->msg( 'parentheses' )
 			->rawParams( $this->getDiffLink() )->escaped();

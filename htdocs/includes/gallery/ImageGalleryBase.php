@@ -30,39 +30,33 @@
 abstract class ImageGalleryBase extends ContextSource {
 	/**
 	 * @var array Gallery images
-	 * @deprecated since 1.23 (was declared "var") and will be removed in 1.24
 	 */
-	public $mImages;
+	protected $mImages;
 
 	/**
 	 * @var bool Whether to show the filesize in bytes in categories
-	 * @deprecated since 1.23 (was declared "var") and will be removed in 1.24
 	 */
-	public $mShowBytes;
+	protected $mShowBytes;
 
 	/**
 	 * @var bool Whether to show the filename. Default: true
-	 * @deprecated since 1.23 (was declared "var") and will be removed in 1.24
 	 */
-	public $mShowFilename;
+	protected $mShowFilename;
 
 	/**
 	 * @var string Gallery mode. Default: traditional
-	 * @deprecated since 1.23 (was declared "var") and will be removed in 1.24
 	 */
-	public $mMode;
+	protected $mMode;
 
 	/**
 	 * @var bool|string Gallery caption. Default: false
-	 * @deprecated since 1.23 (was declared "var") and will be removed in 1.24
 	 */
-	public $mCaption = false;
+	protected $mCaption = false;
 
 	/**
 	 * @var bool Hide blacklisted images?
-	 * @deprecated since 1.23 (was declared "var") and will be removed in 1.24
 	 */
-	public $mHideBadImages;
+	protected $mHideBadImages;
 
 	/**
 	 * @var Parser Registered parser object for output callbacks
@@ -76,7 +70,7 @@ abstract class ImageGalleryBase extends ContextSource {
 	protected $contextTitle = false;
 
 	/** @var array */
-	protected $mAttribs = array();
+	protected $mAttribs = [];
 
 	/** @var bool */
 	static private $modeMapping = false;
@@ -97,14 +91,15 @@ abstract class ImageGalleryBase extends ContextSource {
 			$context = RequestContext::getMainAndWarn( __METHOD__ );
 		}
 		if ( !$mode ) {
-			$galleryOpions = $context->getConfig()->get( 'GalleryOptions' );
-			$mode = $galleryOpions['mode'];
+			$galleryOptions = $context->getConfig()->get( 'GalleryOptions' );
+			$mode = $galleryOptions['mode'];
 		}
 
 		$mode = $wgContLang->lc( $mode );
 
 		if ( isset( self::$modeMapping[$mode] ) ) {
-			return new self::$modeMapping[$mode]( $mode, $context );
+			$class = self::$modeMapping[$mode];
+			return new $class( $mode, $context );
 		} else {
 			throw new MWException( "No gallery class registered for mode $mode" );
 		}
@@ -112,15 +107,15 @@ abstract class ImageGalleryBase extends ContextSource {
 
 	private static function loadModes() {
 		if ( self::$modeMapping === false ) {
-			self::$modeMapping = array(
+			self::$modeMapping = [
 				'traditional' => 'TraditionalImageGallery',
 				'nolines' => 'NolinesImageGallery',
 				'packed' => 'PackedImageGallery',
 				'packed-hover' => 'PackedHoverImageGallery',
 				'packed-overlay' => 'PackedOverlayImageGallery',
-			);
+			];
 			// Allow extensions to make a new gallery format.
-			wfRunHooks( 'GalleryGetModes', self::$modeMapping );
+			Hooks::run( 'GalleryGetModes', [ &self::$modeMapping ] );
 		}
 	}
 
@@ -138,7 +133,7 @@ abstract class ImageGalleryBase extends ContextSource {
 		}
 
 		$galleryOptions = $this->getConfig()->get( 'GalleryOptions' );
-		$this->mImages = array();
+		$this->mImages = [];
 		$this->mShowBytes = $galleryOptions['showBytes'];
 		$this->mShowFilename = true;
 		$this->mParser = false;
@@ -244,12 +239,12 @@ abstract class ImageGalleryBase extends ContextSource {
 	 * @param string $link Override image link (optional)
 	 * @param array $handlerOpts Array of options for image handler (aka page number)
 	 */
-	function add( $title, $html = '', $alt = '', $link = '', $handlerOpts = array() ) {
+	function add( $title, $html = '', $alt = '', $link = '', $handlerOpts = [] ) {
 		if ( $title instanceof File ) {
 			// Old calling convention
 			$title = $title->getTitle();
 		}
-		$this->mImages[] = array( $title, $html, $alt, $link, $handlerOpts );
+		$this->mImages[] = [ $title, $html, $alt, $link, $handlerOpts ];
 		wfDebug( 'ImageGallery::add ' . $title->getText() . "\n" );
 	}
 
@@ -263,12 +258,12 @@ abstract class ImageGalleryBase extends ContextSource {
 	 * @param string $link Override image link (optional)
 	 * @param array $handlerOpts Array of options for image handler (aka page number)
 	 */
-	function insert( $title, $html = '', $alt = '', $link = '', $handlerOpts = array() ) {
+	function insert( $title, $html = '', $alt = '', $link = '', $handlerOpts = [] ) {
 		if ( $title instanceof File ) {
 			// Old calling convention
 			$title = $title->getTitle();
 		}
-		array_unshift( $this->mImages, array( &$title, $html, $alt, $link, $handlerOpts ) );
+		array_unshift( $this->mImages, [ &$title, $html, $alt, $link, $handlerOpts ] );
 	}
 
 	/**

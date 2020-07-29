@@ -2,11 +2,11 @@
 	"@metadata": {
 		"authors": [
 			"Erdemaslancan",
-			"Mirzali"
+			"Mirzali",
+			"Marmase"
 		]
 	},
 	"interwiki-title-norights": "Melumatê interwikiya bıvin",
-	"interwiki-legend-show": "Lecanti bıvin",
 	"interwiki_prefix": "Verole",
 	"interwiki-prefix-label": "Verole:",
 	"interwiki_local": "Raver",
@@ -17,5 +17,7 @@
 	"interwiki_edit": "Bıvurne",
 	"interwiki_reasonfield": "Sebeb:",
 	"interwiki_delquestion": "\"$1\" besterneyêna",
-	"interwiki_addbutton": "Cı ke"
+	"interwiki_addbutton": "Cı ke",
+	"log-name-interwiki": "Qeydê tabloyê interwiki",
+	"right-interwiki": "Daneyanê interwiki bıvurne"
 }

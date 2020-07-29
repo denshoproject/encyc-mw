@@ -35,70 +35,102 @@ class ApiQueryTokens extends ApiQueryBase {
 
 	public function execute() {
 		$params = $this->extractRequestParams();
-		$res = array();
+		$res = [
+			ApiResult::META_TYPE => 'assoc',
+		];
 
-		if ( $this->getMain()->getRequest()->getVal( 'callback' ) !== null ) {
-			$this->setWarning( 'Tokens may not be obtained when using a callback' );
+		if ( $this->lacksSameOriginSecurity() ) {
+			$this->setWarning( 'Tokens may not be obtained when the same-origin policy is not applied' );
 			return;
 		}
 
+		$user = $this->getUser();
+		$session = $this->getRequest()->getSession();
 		$salts = self::getTokenTypeSalts();
 		foreach ( $params['type'] as $type ) {
-			$salt = $salts[$type];
-			$val = $this->getUser()->getEditToken( $salt, $this->getRequest() );
-			$res[$type . 'token'] = $val;
+			$res[$type . 'token'] = self::getToken( $user, $session, $salts[$type] )->toString();
 		}
 
 		$this->getResult()->addValue( 'query', $this->getModuleName(), $res );
 	}
 
+	/**
+	 * Get the salts for known token types
+	 * @return (string|array)[] Returning a string will use that as the salt
+	 *  for User::getEditTokenObject() to fetch the token, which will give a
+	 *  LoggedOutEditToken (always "+\\") for anonymous users. Returning an
+	 *  array will use it as parameters to MediaWiki\Session\Session::getToken(),
+	 *  which will always return a full token even for anonymous users.
+	 */
 	public static function getTokenTypeSalts() {
 		static $salts = null;
 		if ( !$salts ) {
-			wfProfileIn( __METHOD__ );
-			$salts = array(
+			$salts = [
 				'csrf' => '',
 				'watch' => 'watch',
 				'patrol' => 'patrol',
 				'rollback' => 'rollback',
 				'userrights' => 'userrights',
-			);
-			wfRunHooks( 'ApiQueryTokensRegisterTypes', array( &$salts ) );
+				'login' => [ '', 'login' ],
+				'createaccount' => [ '', 'createaccount' ],
+			];
+			Hooks::run( 'ApiQueryTokensRegisterTypes', [ &$salts ] );
 			ksort( $salts );
-			wfProfileOut( __METHOD__ );
 		}
 
 		return $salts;
 	}
 
+	/**
+	 * Get a token from a salt
+	 * @param User $user
+	 * @param MediaWiki\Session\Session $session
+	 * @param string|array $salt A string will be used as the salt for
+	 *  User::getEditTokenObject() to fetch the token, which will give a
+	 *  LoggedOutEditToken (always "+\\") for anonymous users. An array will
+	 *  be used as parameters to MediaWiki\Session\Session::getToken(), which
+	 *  will always return a full token even for anonymous users. An array will
+	 *  also persist the session.
+	 * @return MediaWiki\Session\Token
+	 */
+	public static function getToken( User $user, MediaWiki\Session\Session $session, $salt ) {
+		if ( is_array( $salt ) ) {
+			$session->persist();
+			return call_user_func_array( [ $session, 'getToken' ], $salt );
+		} else {
+			return $user->getEditTokenObject( $salt, $session->getRequest() );
+		}
+	}
+
 	public function getAllowedParams() {
-		return array(
-			'type' => array(
+		return [
+			'type' => [
 				ApiBase::PARAM_DFLT => 'csrf',
 				ApiBase::PARAM_ISMULTI => true,
 				ApiBase::PARAM_TYPE => array_keys( self::getTokenTypeSalts() ),
-			),
-		);
+			],
+		];
 	}
 
-	public function getParamDescription() {
-		return array(
-			'type' => 'Type of token(s) to request'
-		);
+	protected function getExamplesMessages() {
+		return [
+			'action=query&meta=tokens'
+				=> 'apihelp-query+tokens-example-simple',
+			'action=query&meta=tokens&type=watch|patrol'
+				=> 'apihelp-query+tokens-example-types',
+		];
 	}
 
-	public function getDescription() {
-		return 'Gets tokens for data-modifying actions.';
-	}
-
-	protected function getExamples() {
-		return array(
-			'api.php?action=query&meta=tokens' => 'Retrieve a csrf token (the default)',
-			'api.php?action=query&meta=tokens&type=watch|patrol' => 'Retrieve a watch token and a patrol token'
-		);
+	public function isReadMode() {
+		// So login tokens can be fetched on private wikis
+		return false;
 	}
 
 	public function getCacheMode( $params ) {
 		return 'private';
+	}
+
+	public function getHelpUrls() {
+		return 'https://www.mediawiki.org/wiki/API:Tokens';
 	}
 }

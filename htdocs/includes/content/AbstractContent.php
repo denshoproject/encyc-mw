@@ -204,13 +204,13 @@ abstract class AbstractContent implements Content {
 	 * Returns a list of DataUpdate objects for recording information about this
 	 * Content in some secondary data store.
 	 *
-	 * This default implementation calls
-	 * $this->getParserOutput( $content, $title, null, null, false ),
-	 * and then calls getSecondaryDataUpdates( $title, $recursive ) on the
-	 * resulting ParserOutput object.
+	 * This default implementation returns a LinksUpdate object and calls the
+	 * SecondaryDataUpdates hook.
 	 *
 	 * Subclasses may override this to determine the secondary data updates more
 	 * efficiently, preferably without the need to generate a parser output object.
+	 * They should however make sure to call SecondaryDataUpdates to give extensions
+	 * a chance to inject additional updates.
 	 *
 	 * @since 1.21
 	 *
@@ -224,12 +224,19 @@ abstract class AbstractContent implements Content {
 	 * @see Content::getSecondaryDataUpdates()
 	 */
 	public function getSecondaryDataUpdates( Title $title, Content $old = null,
-		$recursive = true, ParserOutput $parserOutput = null ) {
+		$recursive = true, ParserOutput $parserOutput = null
+	) {
 		if ( $parserOutput === null ) {
 			$parserOutput = $this->getParserOutput( $title, null, null, false );
 		}
 
-		return $parserOutput->getSecondaryDataUpdates( $title, $recursive );
+		$updates = [
+			new LinksUpdate( $title, $parserOutput, $recursive )
+		];
+
+		Hooks::run( 'SecondaryDataUpdates', [ $title, $old, $recursive, $parserOutput, &$updates ] );
+
+		return $updates;
 	}
 
 	/**
@@ -247,7 +254,7 @@ abstract class AbstractContent implements Content {
 		}
 		// recursive check to follow double redirects
 		$recurse = $wgMaxRedirects;
-		$titles = array( $title );
+		$titles = [ $title ];
 		while ( --$recurse > 0 ) {
 			if ( $title->isRedirect() ) {
 				$page = WikiPage::factory( $title );
@@ -375,7 +382,7 @@ abstract class AbstractContent implements Content {
 	 *
 	 * @see Content::preloadTransform
 	 */
-	public function preloadTransform( Title $title, ParserOptions $popts, $params = array() ) {
+	public function preloadTransform( Title $title, ParserOptions $popts, $params = [] ) {
 		return $this;
 	}
 
@@ -386,7 +393,7 @@ abstract class AbstractContent implements Content {
 	 *
 	 * @see Content::prepareSave
 	 */
-	public function prepareSave( WikiPage $page, $flags, $baseRevId, User $user ) {
+	public function prepareSave( WikiPage $page, $flags, $parentRevId, User $user ) {
 		if ( $this->isValid() ) {
 			return Status::newGood();
 		} else {
@@ -405,9 +412,9 @@ abstract class AbstractContent implements Content {
 	 * @see Content::getDeletionUpdates
 	 */
 	public function getDeletionUpdates( WikiPage $page, ParserOutput $parserOutput = null ) {
-		return array(
+		return [
 			new LinksDeletionUpdate( $page ),
-		);
+		];
 	}
 
 	/**
@@ -439,14 +446,14 @@ abstract class AbstractContent implements Content {
 	 */
 	public function convert( $toModel, $lossy = '' ) {
 		if ( $this->getModel() === $toModel ) {
-			//nothing to do, shorten out.
+			// nothing to do, shorten out.
 			return $this;
 		}
 
 		$lossy = ( $lossy === 'lossy' ); // string flag, convert to boolean for convenience
 		$result = false;
 
-		wfRunHooks( 'ConvertContent', array( $this, $toModel, $lossy, &$result ) );
+		Hooks::run( 'ConvertContent', [ $this, $toModel, $lossy, &$result ] );
 
 		return $result;
 	}
@@ -480,8 +487,8 @@ abstract class AbstractContent implements Content {
 
 		$po = new ParserOutput();
 
-		if ( wfRunHooks( 'ContentGetParserOutput',
-			array( $this, $title, $revId, $options, $generateHtml, &$po ) ) ) {
+		if ( Hooks::run( 'ContentGetParserOutput',
+			[ $this, $title, $revId, $options, $generateHtml, &$po ] ) ) {
 
 			// Save and restore the old value, just in case something is reusing
 			// the ParserOptions object in some weird way.
@@ -490,6 +497,8 @@ abstract class AbstractContent implements Content {
 			$this->fillParserOutput( $title, $revId, $options, $generateHtml, $po );
 			$options->setRedirectTarget( $oldRedir );
 		}
+
+		Hooks::run( 'ContentAlterParserOutput', [ $this, $title, $po ] );
 
 		return $po;
 	}

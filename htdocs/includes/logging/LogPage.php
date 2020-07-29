@@ -97,7 +97,7 @@ class LogPage {
 
 		// @todo FIXME private/protected/public property?
 		$this->timestamp = $now = wfTimestampNow();
-		$data = array(
+		$data = [
 			'log_id' => $log_id,
 			'log_type' => $this->type,
 			'log_action' => $this->action,
@@ -109,7 +109,7 @@ class LogPage {
 			'log_page' => $this->target->getArticleID(),
 			'log_comment' => $this->comment,
 			'log_params' => $this->params
-		);
+		];
 		$dbw->insert( 'logging', $data, __METHOD__ );
 		$newId = !is_null( $log_id ) ? $log_id : $dbw->insertId();
 
@@ -212,42 +212,6 @@ class LogPage {
 	}
 
 	/**
-	 * Get the name for the given log type
-	 *
-	 * @param string $type Log type
-	 * @return string Log name
-	 * @deprecated since 1.19, warnings in 1.21. Use getName()
-	 */
-	public static function logName( $type ) {
-		global $wgLogNames;
-
-		wfDeprecated( __METHOD__, '1.21' );
-
-		if ( isset( $wgLogNames[$type] ) ) {
-			return str_replace( '_', ' ', wfMessage( $wgLogNames[$type] )->text() );
-		} else {
-			// Bogus log types? Perhaps an extension was removed.
-			return $type;
-		}
-	}
-
-	/**
-	 * Get the log header for the given log type
-	 *
-	 * @todo handle missing log types
-	 * @param string $type Logtype
-	 * @return string Header text of this logtype
-	 * @deprecated since 1.19, warnings in 1.21. Use getDescription()
-	 */
-	public static function logHeader( $type ) {
-		global $wgLogHeaders;
-
-		wfDeprecated( __METHOD__, '1.21' );
-
-		return wfMessage( $wgLogHeaders[$type] )->parse();
-	}
-
-	/**
 	 * Generate text for a log entry.
 	 * Only LogFormatter should call this function.
 	 *
@@ -261,7 +225,7 @@ class LogPage {
 	 * @return string HTML
 	 */
 	public static function actionText( $type, $action, $title = null, $skin = null,
-		$params = array(), $filterWikilinks = false
+		$params = [], $filterWikilinks = false
 	) {
 		global $wgLang, $wgContLang, $wgLogActions;
 
@@ -285,46 +249,10 @@ class LogPage {
 					$rv = wfMessage( $wgLogActions[$key] )->rawParams( $titleLink )
 						->inLanguage( $langObj )->escaped();
 				} else {
-					$details = '';
 					array_unshift( $params, $titleLink );
 
-					// User suppression
-					if ( preg_match( '/^(block|suppress)\/(block|reblock)$/', $key ) ) {
-						if ( $skin ) {
-							// Localize the duration, and add a tooltip
-							// in English to help visitors from other wikis.
-							// The lrm is needed to make sure that the number
-							// is shown on the correct side of the tooltip text.
-							$durationTooltip = '&lrm;' . htmlspecialchars( $params[1] );
-							$params[1] = "<span class='blockExpiry' title='$durationTooltip'>" .
-								$wgLang->translateBlockExpiry( $params[1] ) . '</span>';
-						} else {
-							$params[1] = $wgContLang->translateBlockExpiry( $params[1] );
-						}
-
-						$params[2] = isset( $params[2] ) ?
-							self::formatBlockFlags( $params[2], $langObj ) : '';
-					// Page protections
-					} elseif ( $type == 'protect' && count( $params ) == 3 ) {
-						// Restrictions and expiries
-						if ( $skin ) {
-							$details .= $wgLang->getDirMark() . htmlspecialchars( " {$params[1]}" );
-						} else {
-							$details .= " {$params[1]}";
-						}
-
-						// Cascading flag...
-						if ( $params[2] ) {
-							$text = wfMessage( 'protect-summary-cascade' )
-								->inLanguage( $langObj )->text();
-							$details .= ' ';
-							$details .= wfMessage( 'brackets', $text )->inLanguage( $langObj )->text();
-
-						}
-					}
-
 					$rv = wfMessage( $wgLogActions[$key] )->rawParams( $params )
-							->inLanguage( $langObj )->escaped() . $details;
+							->inLanguage( $langObj )->escaped();
 				}
 			}
 		} else {
@@ -370,69 +298,22 @@ class LogPage {
 			return $title->getPrefixedText();
 		}
 
-		switch ( $type ) {
-			case 'move':
-				$titleLink = Linker::link(
-					$title,
-					htmlspecialchars( $title->getPrefixedText() ),
-					array(),
-					array( 'redirect' => 'no' )
-				);
+		if ( $title->isSpecialPage() ) {
+			list( $name, $par ) = SpecialPageFactory::resolveAlias( $title->getDBkey() );
 
-				$targetTitle = Title::newFromText( $params[0] );
-
-				if ( !$targetTitle ) {
-					# Workaround for broken database
-					$params[0] = htmlspecialchars( $params[0] );
-				} else {
-					$params[0] = Linker::link(
-						$targetTitle,
-						htmlspecialchars( $params[0] )
-					);
-				}
-				break;
-			case 'block':
-				if ( substr( $title->getText(), 0, 1 ) == '#' ) {
-					$titleLink = $title->getText();
-				} else {
-					// @todo Store the user identifier in the parameters
-					// to make this faster for future log entries
-					$id = User::idFromName( $title->getText() );
-					$titleLink = Linker::userLink( $id, $title->getText() )
-						. Linker::userToolLinks( $id, $title->getText(), false, Linker::TOOL_LINKS_NOBLOCK );
-				}
-				break;
-			case 'merge':
-				$titleLink = Linker::link(
-					$title,
-					$title->getPrefixedText(),
-					array(),
-					array( 'redirect' => 'no' )
-				);
-				$params[0] = Linker::link(
-					Title::newFromText( $params[0] ),
-					htmlspecialchars( $params[0] )
-				);
-				$params[1] = $lang->timeanddate( $params[1] );
-				break;
-			default:
-				if ( $title->isSpecialPage() ) {
-					list( $name, $par ) = SpecialPageFactory::resolveAlias( $title->getDBkey() );
-
-					# Use the language name for log titles, rather than Log/X
-					if ( $name == 'Log' ) {
-						$logPage = new LogPage( $par );
-						$titleLink = Linker::link( $title, $logPage->getName()->escaped() );
-						$titleLink = wfMessage( 'parentheses' )
-							->inLanguage( $lang )
-							->rawParams( $titleLink )
-							->escaped();
-					} else {
-						$titleLink = Linker::link( $title );
-					}
-				} else {
-					$titleLink = Linker::link( $title );
-				}
+			# Use the language name for log titles, rather than Log/X
+			if ( $name == 'Log' ) {
+				$logPage = new LogPage( $par );
+				$titleLink = Linker::link( $title, $logPage->getName()->escaped() );
+				$titleLink = wfMessage( 'parentheses' )
+					->inLanguage( $lang )
+					->rawParams( $titleLink )
+					->escaped();
+			} else {
+				$titleLink = Linker::link( $title );
+			}
+		} else {
+			$titleLink = Linker::link( $title );
 		}
 
 		return $titleLink;
@@ -450,11 +331,11 @@ class LogPage {
 	 *
 	 * @return int The log_id of the inserted log entry
 	 */
-	public function addEntry( $action, $target, $comment, $params = array(), $doer = null ) {
+	public function addEntry( $action, $target, $comment, $params = [], $doer = null ) {
 		global $wgContLang;
 
 		if ( !is_array( $params ) ) {
-			$params = array( $params );
+			$params = [ $params ];
 		}
 
 		if ( $comment === null ) {
@@ -485,6 +366,10 @@ class LogPage {
 		$logEntry->setTarget( $target );
 		$logEntry->setPerformer( $doer );
 		$logEntry->setParameters( $params );
+		// All log entries using the LogPage to insert into the logging table
+		// are using the old logging system and therefore the legacy flag is
+		// needed to say the LogFormatter the parameters have numeric keys
+		$logEntry->setLegacy( true );
 
 		$formatter = LogFormatter::newFromEntry( $logEntry );
 		$context = RequestContext::newExtraneousContext( $target );
@@ -509,14 +394,14 @@ class LogPage {
 			return false; // nothing
 		}
 
-		$data = array();
+		$data = [];
 
 		foreach ( $values as $value ) {
-			$data[] = array(
+			$data[] = [
 				'ls_field' => $field,
 				'ls_value' => $value,
 				'ls_log_id' => $logid
-			);
+			];
 		}
 
 		$dbw = wfGetDB( DB_MASTER );
@@ -543,65 +428,10 @@ class LogPage {
 	 */
 	public static function extractParams( $blob ) {
 		if ( $blob === '' ) {
-			return array();
+			return [];
 		} else {
 			return explode( "\n", $blob );
 		}
-	}
-
-	/**
-	 * Convert a comma-delimited list of block log flags
-	 * into a more readable (and translated) form
-	 *
-	 * @param string $flags Flags to format
-	 * @param Language $lang
-	 * @return string
-	 */
-	public static function formatBlockFlags( $flags, $lang ) {
-		$flags = trim( $flags );
-		if ( $flags === '' ) {
-			return ''; //nothing to do
-		}
-		$flags = explode( ',', $flags );
-		$flagsCount = count( $flags );
-
-		for ( $i = 0; $i < $flagsCount; $i++ ) {
-			$flags[$i] = self::formatBlockFlag( $flags[$i], $lang );
-		}
-
-		return wfMessage( 'parentheses' )->inLanguage( $lang )
-			->rawParams( $lang->commaList( $flags ) )->escaped();
-	}
-
-	/**
-	 * Translate a block log flag if possible
-	 *
-	 * @param int $flag Flag to translate
-	 * @param Language $lang Language object to use
-	 * @return string
-	 */
-	public static function formatBlockFlag( $flag, $lang ) {
-		static $messages = array();
-
-		if ( !isset( $messages[$flag] ) ) {
-			$messages[$flag] = htmlspecialchars( $flag ); // Fallback
-
-			// For grepping. The following core messages can be used here:
-			// * block-log-flags-angry-autoblock
-			// * block-log-flags-anononly
-			// * block-log-flags-hiddenname
-			// * block-log-flags-noautoblock
-			// * block-log-flags-nocreate
-			// * block-log-flags-noemail
-			// * block-log-flags-nousertalk
-			$msg = wfMessage( 'block-log-flags-' . $flag )->inLanguage( $lang );
-
-			if ( $msg->exists() ) {
-				$messages[$flag] = $msg->escaped();
-			}
-		}
-
-		return $messages[$flag];
 	}
 
 	/**

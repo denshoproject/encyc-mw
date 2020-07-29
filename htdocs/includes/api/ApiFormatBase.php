@@ -30,8 +30,10 @@
  * @ingroup API
  */
 abstract class ApiFormatBase extends ApiBase {
-	private $mIsHtml, $mFormat, $mUnescapeAmps, $mHelp, $mCleared;
-	private $mBufferResult = false, $mBuffer, $mDisabled = false;
+	private $mIsHtml, $mFormat, $mUnescapeAmps, $mHelp;
+	private $mBuffer, $mDisabled = false;
+	private $mIsWrappedHtml = false;
+	protected $mForceDefaultParams = false;
 
 	/**
 	 * If $format ends with 'fm', pretty-print the output in HTML.
@@ -44,26 +46,41 @@ abstract class ApiFormatBase extends ApiBase {
 		$this->mIsHtml = ( substr( $format, -2, 2 ) === 'fm' ); // ends with 'fm'
 		if ( $this->mIsHtml ) {
 			$this->mFormat = substr( $format, 0, -2 ); // remove ending 'fm'
+			$this->mIsWrappedHtml = $this->getMain()->getCheck( 'wrappedhtml' );
 		} else {
 			$this->mFormat = $format;
 		}
 		$this->mFormat = strtoupper( $this->mFormat );
-		$this->mCleared = false;
 	}
 
 	/**
 	 * Overriding class returns the MIME type that should be sent to the client.
-	 * This method is not called if getIsHtml() returns true.
+	 *
+	 * When getIsHtml() returns true, the return value here is used for syntax
+	 * highlighting but the client sees text/html.
+	 *
 	 * @return string
 	 */
 	abstract public function getMimeType();
 
 	/**
-	 * Whether this formatter needs raw data such as _element tags
-	 * @return bool
+	 * Return a filename for this module's output.
+	 * @note If $this->getIsWrappedHtml() || $this->getIsHtml(), you'll very
+	 *  likely want to fall back to this class's version.
+	 * @since 1.27
+	 * @return string Generally this should be "api-result.$ext", and must be
+	 *  encoded for inclusion in a Content-Disposition header's filename parameter.
 	 */
-	public function getNeedsRawData() {
-		return false;
+	public function getFilename() {
+		if ( $this->getIsWrappedHtml() ) {
+			return 'api-result-wrapped.json';
+		} elseif ( $this->getIsHtml() ) {
+			return 'api-result.html';
+		} else {
+			$exts = MimeMagic::singleton()->getExtensionsForType( $this->getMimeType() );
+			$ext = $exts ? strtok( $exts, ' ' ) : strtolower( $this->mFormat );
+			return "api-result.$ext";
+		}
 	}
 
 	/**
@@ -72,19 +89,6 @@ abstract class ApiFormatBase extends ApiBase {
 	 */
 	public function getFormat() {
 		return $this->mFormat;
-	}
-
-	/**
-	 * Specify whether or not sequences like &amp;quot; should be unescaped
-	 * to &quot; . This should only be set to true for the help message
-	 * when rendered in the default (xmlfm) format. This is a temporary
-	 * special-case fix that should be removed once the help has been
-	 * reworked to use a fully HTML interface.
-	 *
-	 * @param bool $b Whether or not ampersands should be escaped.
-	 */
-	public function setUnescapeAmps( $b ) {
-		$this->mUnescapeAmps = $b;
 	}
 
 	/**
@@ -98,30 +102,36 @@ abstract class ApiFormatBase extends ApiBase {
 	}
 
 	/**
-	 * Whether this formatter can format the help message in a nice way.
-	 * By default, this returns the same as getIsHtml().
-	 * When action=help is set explicitly, the help will always be shown
+	 * Returns true when the special wrapped mode is enabled.
+	 * @since 1.27
 	 * @return bool
 	 */
-	public function getWantsHelp() {
-		return $this->getIsHtml();
+	protected function getIsWrappedHtml() {
+		return $this->mIsWrappedHtml;
 	}
 
 	/**
-	 * Disable the formatter completely. This causes calls to initPrinter(),
-	 * printText() and closePrinter() to be ignored.
+	 * Disable the formatter.
+	 *
+	 * This causes calls to initPrinter() and closePrinter() to be ignored.
 	 */
 	public function disable() {
 		$this->mDisabled = true;
 	}
 
+	/**
+	 * Whether the printer is disabled
+	 * @return bool
+	 */
 	public function isDisabled() {
 		return $this->mDisabled;
 	}
 
 	/**
-	 * Whether this formatter can handle printing API errors. If this returns
-	 * false, then on API errors the default printer will be instantiated.
+	 * Whether this formatter can handle printing API errors.
+	 *
+	 * If this returns false, then on API errors the default printer will be
+	 * instantiated.
 	 * @since 1.23
 	 * @return bool
 	 */
@@ -130,119 +140,160 @@ abstract class ApiFormatBase extends ApiBase {
 	}
 
 	/**
-	 * Initialize the printer function and prepare the output headers, etc.
-	 * This method must be the first outputting method during execution.
-	 * A human-targeted notice about available formats is printed for the HTML-based output,
-	 * except for help screens (caused by either an error in the API parameters,
-	 * the calling of action=help, or requesting the root script api.php).
-	 * @param bool $isHelpScreen Whether a help screen is going to be shown
+	 * Ignore request parameters, force a default.
+	 *
+	 * Used as a fallback if errors are being thrown.
+	 * @since 1.26
 	 */
-	function initPrinter( $isHelpScreen ) {
+	public function forceDefaultParams() {
+		$this->mForceDefaultParams = true;
+	}
+
+	/**
+	 * Overridden to honor $this->forceDefaultParams(), if applicable
+	 * @since 1.26
+	 */
+	protected function getParameterFromSettings( $paramName, $paramSettings, $parseLimit ) {
+		if ( !$this->mForceDefaultParams ) {
+			return parent::getParameterFromSettings( $paramName, $paramSettings, $parseLimit );
+		}
+
+		if ( !is_array( $paramSettings ) ) {
+			return $paramSettings;
+		} elseif ( isset( $paramSettings[self::PARAM_DFLT] ) ) {
+			return $paramSettings[self::PARAM_DFLT];
+		} else {
+			return null;
+		}
+	}
+
+	/**
+	 * Initialize the printer function and prepare the output headers.
+	 * @param bool $unused Always false since 1.25
+	 */
+	public function initPrinter( $unused = false ) {
 		if ( $this->mDisabled ) {
 			return;
 		}
-		$isHtml = $this->getIsHtml();
-		$mime = $isHtml ? 'text/html' : $this->getMimeType();
-		$script = wfScript( 'api' );
+
+		$mime = $this->getIsWrappedHtml()
+			? 'text/mediawiki-api-prettyprint-wrapped'
+			: ( $this->getIsHtml() ? 'text/html' : $this->getMimeType() );
 
 		// Some printers (ex. Feed) do their own header settings,
 		// in which case $mime will be set to null
-		if ( is_null( $mime ) ) {
+		if ( $mime === null ) {
 			return; // skip any initialization
 		}
 
 		$this->getMain()->getRequest()->response()->header( "Content-Type: $mime; charset=utf-8" );
 
-		//Set X-Frame-Options API results (bug 39180)
+		// Set X-Frame-Options API results (bug 39180)
 		$apiFrameOptions = $this->getConfig()->get( 'ApiFrameOptions' );
 		if ( $apiFrameOptions ) {
 			$this->getMain()->getRequest()->response()->header( "X-Frame-Options: $apiFrameOptions" );
 		}
 
-		if ( $isHtml ) {
-?>
-<!DOCTYPE HTML>
-<html>
-<head>
-<?php
-			if ( $this->mUnescapeAmps ) {
-?>	<title>MediaWiki API</title>
-<?php
-			} else {
-?>	<title>MediaWiki API Result</title>
-<?php
-			}
-?>
-</head>
-<body>
-<?php
-			if ( !$isHelpScreen ) {
-// @codingStandardsIgnoreStart Exclude long line from CodeSniffer checks
-?>
-<br />
-<small>
-You are looking at the HTML representation of the <?php echo $this->mFormat; ?> format.<br />
-HTML is good for debugging, but is unsuitable for application use.<br />
-Specify the format parameter to change the output format.<br />
-To see the non HTML representation of the <?php echo $this->mFormat; ?> format, set format=<?php echo strtolower( $this->mFormat ); ?>.<br />
-See the <a href='https://www.mediawiki.org/wiki/API'>complete documentation</a>, or
-<a href='<?php echo $script; ?>'>API help</a> for more information.
-</small>
-<pre style='white-space: pre-wrap;'>
-<?php
-// @codingStandardsIgnoreEnd
-			// don't wrap the contents of the <pre> for help screens
-			// because these are actually formatted to rely on
-			// the monospaced font for layout purposes
-			} else {
-?>
-<pre>
-<?php
-			}
-		}
+		// Set a Content-Disposition header so something downloading an API
+		// response uses a halfway-sensible filename (T128209).
+		$filename = $this->getFilename();
+		$this->getMain()->getRequest()->response()->header(
+			"Content-Disposition: inline; filename=\"{$filename}\""
+		);
 	}
 
 	/**
-	 * Finish printing. Closes HTML tags.
+	 * Finish printing and output buffered data.
 	 */
 	public function closePrinter() {
 		if ( $this->mDisabled ) {
 			return;
 		}
-		if ( $this->getIsHtml() ) {
-?>
 
-</pre>
-</body>
-</html>
-<?php
+		$mime = $this->getMimeType();
+		if ( $this->getIsHtml() && $mime !== null ) {
+			$format = $this->getFormat();
+			$lcformat = strtolower( $format );
+			$result = $this->getBuffer();
+
+			$context = new DerivativeContext( $this->getMain() );
+			$context->setSkin( SkinFactory::getDefaultInstance()->makeSkin( 'apioutput' ) );
+			$context->setTitle( SpecialPage::getTitleFor( 'ApiHelp' ) );
+			$out = new OutputPage( $context );
+			$context->setOutput( $out );
+
+			$out->addModuleStyles( 'mediawiki.apipretty' );
+			$out->setPageTitle( $context->msg( 'api-format-title' ) );
+
+			if ( !$this->getIsWrappedHtml() ) {
+				// When the format without suffix 'fm' is defined, there is a non-html version
+				if ( $this->getMain()->getModuleManager()->isDefined( $lcformat, 'format' ) ) {
+					$msg = $context->msg( 'api-format-prettyprint-header' )->params( $format, $lcformat );
+				} else {
+					$msg = $context->msg( 'api-format-prettyprint-header-only-html' )->params( $format );
+				}
+
+				$header = $msg->parseAsBlock();
+				$out->addHTML(
+					Html::rawElement( 'div', [ 'class' => 'api-pretty-header' ],
+						ApiHelp::fixHelpLinks( $header )
+					)
+				);
+			}
+
+			if ( Hooks::run( 'ApiFormatHighlight', [ $context, $result, $mime, $format ] ) ) {
+				$out->addHTML(
+					Html::element( 'pre', [ 'class' => 'api-pretty-content' ], $result )
+				);
+			}
+
+			if ( $this->getIsWrappedHtml() ) {
+				// This is a special output mode mainly intended for ApiSandbox use
+				$time = microtime( true ) - $this->getConfig()->get( 'RequestTime' );
+				$json = FormatJson::encode(
+					[
+						'html' => $out->getHTML(),
+						'modules' => array_values( array_unique( array_merge(
+							$out->getModules(),
+							$out->getModuleScripts(),
+							$out->getModuleStyles()
+						) ) ),
+						'time' => round( $time * 1000 ),
+					],
+					false, FormatJson::ALL_OK
+				);
+
+				// Bug 66776: wfMangleFlashPolicy() is needed to avoid a nasty bug in
+				// Flash, but what it does isn't friendly for the API, so we need to
+				// work around it.
+				if ( preg_match( '/\<\s*cross-domain-policy\s*\>/i', $json ) ) {
+					$json = preg_replace(
+						'/\<(\s*cross-domain-policy\s*)\>/i', '\\u003C$1\\u003E', $json
+					);
+				}
+
+				echo $json;
+			} else {
+				// API handles its own clickjacking protection.
+				// Note, that $wgBreakFrames will still override $wgApiFrameOptions for format mode.
+				$out->allowClickjacking();
+				$out->output();
+			}
+		} else {
+			// For non-HTML output, clear all errors that might have been
+			// displayed if display_errors=On
+			ob_clean();
+
+			echo $this->getBuffer();
 		}
 	}
 
 	/**
-	 * The main format printing function. Call it to output the result
-	 * string to the user. This function will automatically output HTML
-	 * when format name ends in 'fm'.
+	 * Append text to the output buffer.
 	 * @param string $text
 	 */
 	public function printText( $text ) {
-		if ( $this->mDisabled ) {
-			return;
-		}
-		if ( $this->mBufferResult ) {
-			$this->mBuffer = $text;
-		} elseif ( $this->getIsHtml() ) {
-			echo $this->formatHTML( $text );
-		} else {
-			// For non-HTML output, clear all errors that might have been
-			// displayed if display_errors=On
-			// Do this only once, of course
-			if ( !$this->mCleared ) {
-				ob_clean();
-				$this->mCleared = true;
-			}
-			echo $text;
-		}
+		$this->mBuffer .= $text;
 	}
 
 	/**
@@ -253,34 +304,89 @@ See the <a href='https://www.mediawiki.org/wiki/API'>complete documentation</a>,
 		return $this->mBuffer;
 	}
 
-	/**
-	 * Set the flag to buffer the result instead of printing it.
-	 * @param bool $value
+	public function getAllowedParams() {
+		$ret = [];
+		if ( $this->getIsHtml() ) {
+			$ret['wrappedhtml'] = [
+				ApiBase::PARAM_DFLT => false,
+				ApiBase::PARAM_HELP_MSG => 'apihelp-format-param-wrappedhtml',
+
+			];
+		}
+		return $ret;
+	}
+
+	protected function getExamplesMessages() {
+		return [
+			'action=query&meta=siteinfo&siprop=namespaces&format=' . $this->getModuleName()
+				=> [ 'apihelp-format-example-generic', $this->getFormat() ]
+		];
+	}
+
+	public function getHelpUrls() {
+		return 'https://www.mediawiki.org/wiki/API:Data_formats';
+	}
+
+	/************************************************************************//**
+	 * @name   Deprecated
+	 * @{
 	 */
-	public function setBufferResult( $value ) {
-		$this->mBufferResult = $value;
+
+	/**
+	 * Specify whether or not sequences like &amp;quot; should be unescaped
+	 * to &quot; . This should only be set to true for the help message
+	 * when rendered in the default (xmlfm) format. This is a temporary
+	 * special-case fix that should be removed once the help has been
+	 * reworked to use a fully HTML interface.
+	 *
+	 * @deprecated since 1.25
+	 * @param bool $b Whether or not ampersands should be escaped.
+	 */
+	public function setUnescapeAmps( $b ) {
+		wfDeprecated( __METHOD__, '1.25' );
+		$this->mUnescapeAmps = $b;
+	}
+
+	/**
+	 * Whether this formatter can format the help message in a nice way.
+	 * By default, this returns the same as getIsHtml().
+	 * When action=help is set explicitly, the help will always be shown
+	 * @deprecated since 1.25
+	 * @return bool
+	 */
+	public function getWantsHelp() {
+		wfDeprecated( __METHOD__, '1.25' );
+		return $this->getIsHtml();
 	}
 
 	/**
 	 * Sets whether the pretty-printer should format *bold*
+	 * @deprecated since 1.25
 	 * @param bool $help
 	 */
 	public function setHelp( $help = true ) {
+		wfDeprecated( __METHOD__, '1.25' );
 		$this->mHelp = $help;
 	}
 
 	/**
 	 * Pretty-print various elements in HTML format, such as xml tags and
 	 * URLs. This method also escapes characters like <
+	 * @deprecated since 1.25
 	 * @param string $text
 	 * @return string
 	 */
 	protected function formatHTML( $text ) {
+		wfDeprecated( __METHOD__, '1.25' );
+
 		// Escape everything first for full coverage
 		$text = htmlspecialchars( $text );
-		// encode all comments or tags as safe blue strings
-		$text = str_replace( '&lt;', '<span style="color:blue;">&lt;', $text );
-		$text = str_replace( '&gt;', '&gt;</span>', $text );
+
+		if ( $this->mFormat === 'XML' ) {
+			// encode all comments or tags as safe blue strings
+			$text = str_replace( '&lt;', '<span style="color:blue;">&lt;', $text );
+			$text = str_replace( '&gt;', '&gt;</span>', $text );
+		}
 
 		// identify requests to api.php
 		$text = preg_replace( '#^(\s*)(api\.php\?[^ <\n\t]+)$#m', '\1<a href="\2">\2</a>', $text );
@@ -290,7 +396,7 @@ See the <a href='https://www.mediawiki.org/wiki/API'>complete documentation</a>,
 		}
 
 		// Armor links (bug 61362)
-		$masked = array();
+		$masked = [];
 		$text = preg_replace_callback( '#<a .*?</a>#', function ( $matches ) use ( &$masked ) {
 			$sha = sha1( $matches[0] );
 			$masked[$sha] = $matches[0];
@@ -325,30 +431,43 @@ See the <a href='https://www.mediawiki.org/wiki/API'>complete documentation</a>,
 		return $text;
 	}
 
-	public function getExamples() {
-		return array(
-			'api.php?action=query&meta=siteinfo&siprop=namespaces&format=' . $this->getModuleName()
-				=> "Format the query result in the {$this->getModuleName()} format",
-		);
-	}
-
-	public function getHelpUrls() {
-		return 'https://www.mediawiki.org/wiki/API:Data_formats';
-	}
-
+	/**
+	 * @see ApiBase::getDescription
+	 * @deprecated since 1.25
+	 */
 	public function getDescription() {
 		return $this->getIsHtml() ? ' (pretty-print in HTML)' : '';
 	}
 
 	/**
-	 * To avoid code duplication with the deprecation of dbg, dump, txt, wddx,
-	 * and yaml, this method is added to do the necessary work. It should be
-	 * removed when those deprecated formats are removed.
+	 * Set the flag to buffer the result instead of printing it.
+	 * @deprecated since 1.25, output is always buffered
+	 * @param bool $value
 	 */
-	protected function markDeprecated() {
-		$fm = $this->getIsHtml() ? 'fm' : '';
-		$name = $this->getModuleName();
-		$this->logFeatureUsage( "format=$name" );
-		$this->setWarning( "format=$name has been deprecated. Please use format=json$fm instead." );
+	public function setBufferResult( $value ) {
 	}
+
+	/**
+	 * Formerly indicated whether the formatter needed metadata from ApiResult.
+	 *
+	 * ApiResult previously (indirectly) used this to decide whether to add
+	 * metadata or to ignore calls to metadata-setting methods, which
+	 * unfortunately made several methods that should have been static have to
+	 * be dynamic instead. Now ApiResult always stores metadata and formatters
+	 * are required to ignore it or filter it out.
+	 *
+	 * @deprecated since 1.25
+	 * @return bool Always true
+	 */
+	public function getNeedsRawData() {
+		wfDeprecated( __METHOD__, '1.25' );
+		return true;
+	}
+
+	/**@}*/
 }
+
+/**
+ * For really cool vim folding this needs to be at the end:
+ * vim: foldmarker=@{,@} foldmethod=marker
+ */
