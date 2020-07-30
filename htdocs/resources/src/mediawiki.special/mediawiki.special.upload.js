@@ -6,8 +6,10 @@
  * @singleton
  */
 ( function ( mw, $ ) {
-	var ajaxUploadDestCheck = mw.config.get( 'wgAjaxUploadDestCheck' ),
-		$license = $( '#wpLicense' ), uploadWarning, uploadLicense;
+	/*jshint latedef:false */
+	var uploadWarning, uploadLicense,
+		ajaxUploadDestCheck = mw.config.get( 'wgAjaxUploadDestCheck' ),
+		$license = $( '#wpLicense' );
 
 	window.wgUploadWarningObj = uploadWarning = {
 		responseCache: { '': '&nbsp;' },
@@ -34,7 +36,7 @@
 			}
 			// Check response cache
 			if ( this.responseCache.hasOwnProperty( this.nameToCheck ) ) {
-				this.setWarning( this.responseCache[this.nameToCheck] );
+				this.setWarning( this.responseCache[ this.nameToCheck ] );
 				return;
 			}
 
@@ -55,42 +57,54 @@
 		},
 
 		timeout: function () {
-			var $spinnerDestCheck;
+			var $spinnerDestCheck, title;
 			if ( !ajaxUploadDestCheck || this.nameToCheck === '' ) {
 				return;
 			}
 			$spinnerDestCheck = $.createSpinner().insertAfter( '#wpDestFile' );
+			title = mw.Title.newFromText( this.nameToCheck, mw.config.get( 'wgNamespaceIds' ).file );
 
 			( new mw.Api() ).get( {
+				formatversion: 2,
 				action: 'query',
-				titles: ( new mw.Title( this.nameToCheck, mw.config.get( 'wgNamespaceIds' ).file ) ).getPrefixedText(),
+				// If title is empty, user input is invalid, the API call will produce details about why
+				titles: title ? title.getPrefixedText() : this.nameToCheck,
 				prop: 'imageinfo',
-				iiprop: 'uploadwarning',
-				indexpageids: ''
+				iiprop: 'uploadwarning'
 			} ).done( function ( result ) {
-				var resultOut = '';
-				if ( result.query ) {
-					resultOut = result.query.pages[result.query.pageids[0]].imageinfo[0];
+				var
+					resultOut = '',
+					page = result.query.pages[ 0 ];
+				if ( page.imageinfo ) {
+					resultOut = page.imageinfo[ 0 ].html;
+				} else if ( page.invalidreason ) {
+					resultOut = mw.html.escape( page.invalidreason );
 				}
-				$spinnerDestCheck.remove();
 				uploadWarning.processResult( resultOut, uploadWarning.nameToCheck );
+			} ).always( function () {
+				$spinnerDestCheck.remove();
 			} );
 		},
 
 		processResult: function ( result, fileName ) {
-			this.setWarning( result.html );
-			this.responseCache[fileName] = result.html;
+			this.setWarning( result );
+			this.responseCache[ fileName ] = result;
 		},
 
 		setWarning: function ( warning ) {
-			$( '#wpDestFile-warning' ).html( warning );
+			var $warningBox = $( '#wpDestFile-warning' ),
+				$warning = $( $.parseHTML( warning ) );
+			mw.hook( 'wikipage.content' ).fire( $warning );
+			$warningBox.empty().append( $warning );
 
 			// Set a value in the form indicating that the warning is acknowledged and
 			// doesn't need to be redisplayed post-upload
 			if ( !warning ) {
 				$( '#wpDestFileWarningAck' ).val( '' );
+				$warningBox.removeAttr( 'class' );
 			} else {
 				$( '#wpDestFileWarningAck' ).val( '1' );
+				$warningBox.attr( 'class', 'mw-destfile-warning' );
 			}
 
 		}
@@ -106,27 +120,29 @@
 				return;
 			}
 			if ( this.responseCache.hasOwnProperty( license ) ) {
-				this.showPreview( this.responseCache[license] );
+				this.showPreview( this.responseCache[ license ] );
 				return;
 			}
 
 			$spinnerLicense = $.createSpinner().insertAfter( '#wpLicense' );
 
 			( new mw.Api() ).get( {
+				formatversion: 2,
 				action: 'parse',
 				text: '{{' + license + '}}',
 				title: $( '#wpDestFile' ).val() || 'File:Sample.jpg',
 				prop: 'text',
-				pst: ''
+				pst: true
 			} ).done( function ( result ) {
-				$spinnerLicense.remove();
 				uploadLicense.processResult( result, license );
+			} ).always( function () {
+				$spinnerLicense.remove();
 			} );
 		},
 
 		processResult: function ( result, license ) {
-			this.responseCache[license] = result.parse.text['*'];
-			this.showPreview( this.responseCache[license] );
+			this.responseCache[ license ] = result.parse.text;
+			this.showPreview( this.responseCache[ license ] );
 		},
 
 		showPreview: function ( preview ) {
@@ -136,11 +152,6 @@
 	};
 
 	$( function () {
-		// Disable URL box if the URL copy upload source type is not selected
-		if ( !$( '#wpSourceTypeurl' ).prop( 'checked' ) ) {
-			$( '#wpUploadFileURL' ).prop( 'disabled', true );
-		}
-
 		// AJAX wpDestFile warnings
 		if ( ajaxUploadDestCheck ) {
 			// Insert an event handler that fetches upload warnings when wpDestFile
@@ -202,6 +213,7 @@
 				// URLs are less likely to have a useful extension, so don't include them in the
 				// extension check.
 				if (
+					mw.config.get( 'wgCheckFileExtensions' ) &&
 					mw.config.get( 'wgStrictFileExtensions' ) &&
 					mw.config.get( 'wgFileExtensions' ) &&
 					$( this ).attr( 'id' ) !== 'wpUploadFileURL'
@@ -231,7 +243,7 @@
 				fname = fname.replace( / /g, '_' );
 				// Capitalise first letter if needed
 				if ( mw.config.get( 'wgCapitalizeUploads' ) ) {
-					fname = fname.charAt( 0 ).toUpperCase().concat( fname.slice( 1 ) );
+					fname = fname[ 0 ].toUpperCase() + fname.slice( 1 );
 				}
 
 				// Output result
@@ -265,15 +277,32 @@
 		 *
 		 * TODO: Is there a way we can ask the browser what's supported in `<img>`s?
 		 *
-		 * TODO: Put SVG back after working around Firefox 7 bug <https://bugzilla.wikimedia.org/show_bug.cgi?id=31643>
+		 * TODO: Put SVG back after working around Firefox 7 bug <https://phabricator.wikimedia.org/T33643>
 		 *
 		 * @param {File} file
-		 * @return boolean
+		 * @return {boolean}
 		 */
 		function fileIsPreviewable( file ) {
-			var known = ['image/png', 'image/gif', 'image/jpeg', 'image/svg+xml'],
+			var known = [ 'image/png', 'image/gif', 'image/jpeg', 'image/svg+xml' ],
 				tooHuge = 10 * 1024 * 1024;
 			return ( $.inArray( file.type, known ) !== -1 ) && file.size > 0 && file.size < tooHuge;
+		}
+
+		/**
+		 * Format a file size attractively.
+		 *
+		 * TODO: Match numeric formatting
+		 *
+		 * @param {number} s
+		 * @return {string}
+		 */
+		function prettySize( s ) {
+			var sizeMsgs = [ 'size-bytes', 'size-kilobytes', 'size-megabytes', 'size-gigabytes' ];
+			while ( s >= 1024 && sizeMsgs.length > 1 ) {
+				s /= 1024;
+				sizeMsgs = sizeMsgs.slice( 1 );
+			}
+			return mw.msg( sizeMsgs[ 0 ], Math.round( s ) );
 		}
 
 		/**
@@ -294,18 +323,17 @@
 				ctx,
 				meta,
 				previewSize = 180,
-				thumb = $( '<div id="mw-upload-thumbnail" class="thumb tright">' +
-							'<div class="thumbinner">' +
-								'<div class="mw-small-spinner" style="width: 180px; height: 180px"></div>' +
-								'<div class="thumbcaption"><div class="filename"></div><div class="fileinfo"></div></div>' +
-							'</div>' +
-						'</div>' );
+				$spinner = $.createSpinner( { size: 'small', type: 'block' } )
+					.css( { width: previewSize, height: previewSize } ),
+				thumb = mw.template.get( 'mediawiki.special.upload', 'thumbnail.html' ).render();
 
-			thumb.find( '.filename' ).text( file.name ).end()
-				.find( '.fileinfo' ).text( prettySize( file.size ) ).end();
+			thumb
+				.find( '.filename' ).text( file.name ).end()
+				.find( '.fileinfo' ).text( prettySize( file.size ) ).end()
+				.find( '.thumbinner' ).prepend( $spinner ).end();
 
-			$canvas = $( '<canvas width="' + previewSize + '" height="' + previewSize + '" ></canvas>' );
-			ctx = $canvas[0].getContext( '2d' );
+			$canvas = $( '<canvas>' ).attr( { width: previewSize, height: previewSize } );
+			ctx = $canvas[ 0 ].getContext( '2d' );
 			$( '#mw-htmlform-source' ).parent().prepend( thumb );
 
 			fetchPreview( file, function ( dataURL ) {
@@ -377,7 +405,7 @@
 					ctx.clearRect( 0, 0, 180, 180 );
 					ctx.rotate( rotation / 180 * Math.PI );
 					ctx.drawImage( img, x, y, width, height );
-					thumb.find( '.mw-small-spinner' ).replaceWith( $canvas );
+					$spinner.replaceWith( $canvas );
 
 					// Image size
 					info = mw.msg( 'widthheight', logicalWidth, logicalHeight ) +
@@ -385,12 +413,17 @@
 
 					$( '#mw-upload-thumbnail .fileinfo' ).text( info );
 				};
+				img.onerror = function () {
+					// Can happen for example for invalid SVG files
+					clearPreview();
+				};
 				img.src = dataURL;
 			}, mw.config.get( 'wgFileCanRotate' ) ? function ( data ) {
-				/*jshint camelcase:false, nomen:false */
 				try {
 					meta = mw.libs.jpegmeta( data, file.fileName );
+					// jscs:disable requireCamelCaseOrUpperCaseIdentifiers, disallowDanglingUnderscores
 					meta._binary_data = null;
+					// jscs:enable
 				} catch ( e ) {
 					meta = null;
 				}
@@ -411,7 +444,7 @@
 			var reader = new FileReader();
 			if ( callbackBinary && 'readAsBinaryString' in reader ) {
 				// To fetch JPEG metadata we need a binary string; start there.
-				// todo:
+				// TODO
 				reader.onload = function () {
 					callbackBinary( reader.result );
 
@@ -428,7 +461,7 @@
 						buffer = new Uint8Array( reader.result ),
 						string = '';
 					for ( i = 0; i < buffer.byteLength; i++ ) {
-						string += String.fromCharCode( buffer[i] );
+						string += String.fromCharCode( buffer[ i ] );
 					}
 					callbackBinary( string );
 
@@ -458,23 +491,6 @@
 		}
 
 		/**
-		 * Format a file size attractively.
-		 *
-		 * TODO: Match numeric formatting
-		 *
-		 * @param {number} s
-		 * @return {string}
-		 */
-		function prettySize( s ) {
-			var sizeMsgs = ['size-bytes', 'size-kilobytes', 'size-megabytes', 'size-gigabytes'];
-			while ( s >= 1024 && sizeMsgs.length > 1 ) {
-				s /= 1024;
-				sizeMsgs = sizeMsgs.slice( 1 );
-			}
-			return mw.msg( sizeMsgs[0], Math.round( s ) );
-		}
-
-		/**
 		 * Clear the file upload preview area.
 		 */
 		function clearPreview() {
@@ -490,10 +506,10 @@
 			function getMaxUploadSize( type ) {
 				var sizes = mw.config.get( 'wgMaxUploadSize' );
 
-				if ( sizes[type] !== undefined ) {
-					return sizes[type];
+				if ( sizes[ type ] !== undefined ) {
+					return sizes[ type ];
 				}
-				return sizes['*'];
+				return sizes[ '*' ];
 			}
 
 			$( '.mw-upload-source-error' ).remove();
@@ -518,7 +534,7 @@
 				clearPreview();
 				if ( this.files && this.files.length ) {
 					// Note: would need to be updated to handle multiple files.
-					var file = this.files[0];
+					var file = this.files[ 0 ];
 
 					if ( !checkMaxUploadSize( file ) ) {
 						return;
@@ -534,32 +550,58 @@
 
 	// Disable all upload source fields except the selected one
 	$( function () {
-		var i, $row,
-			$rows = $( '.mw-htmlform-field-UploadSourceField' );
+		var $rows = $( '.mw-htmlform-field-UploadSourceField' );
 
-		/**
-		 * @param {jQuery} $currentRow
-		 * @return {Function} Handler
-		 * @return {jQuery.Event} return.e
-		 */
-		function createHandler( $currentRow ) {
-			return function () {
-				$( '.mw-upload-source-error' ).remove();
-				if ( this.checked ) {
-					// Disable all inputs
-					$rows.find( 'input[name!="wpSourceType"]' ).prop( 'disabled', true );
-					// Re-enable the current one
-					$currentRow.find( 'input' ).prop( 'disabled', false );
-				}
-			};
-		}
+		$rows.on( 'change', 'input[type="radio"]', function ( e ) {
+			var currentRow = e.delegateTarget;
 
-		for ( i = $rows.length; i; i-- ) {
-			$row = $rows.eq( i - 1 );
-			$row
-				.find( 'input[name="wpSourceType"]' )
-				.change( createHandler( $row ) );
+			if ( !this.checked ) {
+				return;
+			}
+
+			$( '.mw-upload-source-error' ).remove();
+
+			// Enable selected upload method
+			$( currentRow ).find( 'input' ).prop( 'disabled', false );
+
+			// Disable inputs of other upload methods
+			// (except for the radio button to re-enable it)
+			$rows
+				.not( currentRow )
+				.find( 'input[type!="radio"]' )
+				.prop( 'disabled', true );
+		} );
+
+		// Set initial state
+		if ( !$( '#wpSourceTypeurl' ).prop( 'checked' ) ) {
+			$( '#wpUploadFileURL' ).prop( 'disabled', true );
 		}
 	} );
 
+	$( function () {
+		// Prevent losing work
+		var allowCloseWindow,
+			$uploadForm = $( '#mw-upload-form' );
+
+		if ( !mw.user.options.get( 'useeditwarning' ) ) {
+			// If the user doesn't want edit warnings, don't set things up.
+			return;
+		}
+
+		$uploadForm.data( 'origtext', $uploadForm.serialize() );
+
+		allowCloseWindow = mw.confirmCloseWindow( {
+			test: function () {
+				return $( '#wpUploadFile' ).get( 0 ).files.length !== 0 ||
+					$uploadForm.data( 'origtext' ) !== $uploadForm.serialize();
+			},
+
+			message: mw.msg( 'editwarning-warning' ),
+			namespace: 'uploadwarning'
+		} );
+
+		$uploadForm.submit( function () {
+			allowCloseWindow.release();
+		} );
+	} );
 }( mediaWiki, jQuery ) );

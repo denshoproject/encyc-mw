@@ -3,7 +3,9 @@
 -- not have to run it by itself unless doing a manual install.
 
 -- This is a shared schema file used for both MySQL and SQLite installs.
-
+--
+-- For more documentation on the database schema, see
+-- https://www.mediawiki.org/wiki/Manual:Database_layout
 --
 -- General notes:
 --
@@ -128,8 +130,7 @@ CREATE TABLE /*_*/user (
   --
   user_editcount int,
 
-  -- Expiration date for user password. Use $user->expirePassword()
-  -- to force a password reset.
+  -- Expiration date for user password.
   user_password_expires varbinary(14) DEFAULT NULL
 
 ) /*$wgDBTableOptions*/;
@@ -182,7 +183,7 @@ CREATE UNIQUE INDEX /*i*/ufg_user_group ON /*_*/user_former_groups (ufg_user,ufg
 --
 CREATE TABLE /*_*/user_newtalk (
   -- Key to user.user_id
-  user_id int NOT NULL default 0,
+  user_id int unsigned NOT NULL default 0,
   -- If the user is an anonymous user their IP address is stored here
   -- since the user_id of 0 is ambiguous
   user_ip varbinary(40) NOT NULL default '',
@@ -220,6 +221,32 @@ CREATE UNIQUE INDEX /*i*/user_properties_user_property ON /*_*/user_properties (
 CREATE INDEX /*i*/user_properties_property ON /*_*/user_properties (up_property);
 
 --
+-- This table contains a user's bot passwords: passwords that allow access to
+-- the account via the API with limited rights.
+--
+CREATE TABLE /*_*/bot_passwords (
+  -- User ID obtained from CentralIdLookup.
+  bp_user int NOT NULL,
+
+  -- Application identifier
+  bp_app_id varbinary(32) NOT NULL,
+
+  -- Password hashes, like user.user_password
+  bp_password tinyblob NOT NULL,
+
+  -- Like user.user_token
+  bp_token binary(32) NOT NULL default '',
+
+  -- JSON blob for MWRestrictions
+  bp_restrictions blob NOT NULL,
+
+  -- Grants allowed to the account when authenticated with this bot-password
+  bp_grants blob NOT NULL,
+
+  PRIMARY KEY ( bp_user, bp_app_id )
+) /*$wgDBTableOptions*/;
+
+--
 -- Core of the wiki: each page has an entry here which identifies
 -- it by title and contains some essential metadata.
 --
@@ -240,9 +267,6 @@ CREATE TABLE /*_*/page (
   -- Comma-separated set of permission keys indicating who
   -- can move or edit the page.
   page_restrictions tinyblob NOT NULL,
-
-  -- Number of times this page has been viewed.
-  page_counter bigint unsigned NOT NULL default 0,
 
   -- 1 indicates the article is a redirect.
   page_is_redirect tinyint unsigned NOT NULL default 0,
@@ -307,7 +331,7 @@ CREATE TABLE /*_*/revision (
   -- Text comment summarizing the change.
   -- This text is shown in the history and other changes lists,
   -- rendered in a subset of wiki markup by Linker::formatComment()
-  rev_comment tinyblob NOT NULL,
+  rev_comment varbinary(767) NOT NULL,
 
   -- Key to user.user_id of the user who made this edit.
   -- Stores 0 for anonymous edits and for some mass imports.
@@ -374,13 +398,20 @@ CREATE TABLE /*_*/text (
 
   -- Comma-separated list of flags:
   -- gzip: text is compressed with PHP's gzdeflate() function.
-  -- utf8: text was stored as UTF-8.
-  --       If $wgLegacyEncoding option is on, rows *without* this flag
-  --       will be converted to UTF-8 transparently at load time.
+  -- utf-8: text was stored as UTF-8.
+  --        If $wgLegacyEncoding option is on, rows *without* this flag
+  --        will be converted to UTF-8 transparently at load time. Note
+  --        that due to a bug in a maintenance script, this flag may
+  --        have been stored as 'utf8' in some cases (T18841).
   -- object: text field contained a serialized PHP object.
   --         The object either contains multiple versions compressed
   --         together to achieve a better compression ratio, or it refers
   --         to another row where the text can be found.
+  -- external: text was stored in an external location specified by old_text.
+  --           Any additional flags apply to the data stored at that URL, not
+  --           the URL itself. The 'object' flag is *not* set for URLs of the
+  --           form 'DB://cluster/id/itemid', because the external storage
+  --           system itself decompresses these.
   old_flags tinyblob NOT NULL
 ) /*$wgDBTableOptions*/ MAX_ROWS=10000000 AVG_ROW_LENGTH=10240;
 -- In case tables are created as MyISAM, use row hints for MySQL <5.0 to avoid 4GB limit
@@ -407,7 +438,7 @@ CREATE TABLE /*_*/archive (
   ar_text mediumblob NOT NULL,
 
   -- Basic revision stuff...
-  ar_comment tinyblob NOT NULL,
+  ar_comment varbinary(767) NOT NULL,
   ar_user int unsigned NOT NULL default 0,
   ar_user_text varchar(255) binary NOT NULL,
   ar_timestamp binary(14) NOT NULL default '',
@@ -486,7 +517,7 @@ CREATE TABLE /*_*/pagelinks (
 
 CREATE UNIQUE INDEX /*i*/pl_from ON /*_*/pagelinks (pl_from,pl_namespace,pl_title);
 CREATE INDEX /*i*/pl_namespace ON /*_*/pagelinks (pl_namespace,pl_title,pl_from);
-CREATE INDEX /*i*/pl_backlinks_namespace ON /*_*/pagelinks (pl_namespace,pl_title,pl_from_namespace,pl_from);
+CREATE INDEX /*i*/pl_backlinks_namespace ON /*_*/pagelinks (pl_from_namespace,pl_namespace,pl_title,pl_from);
 
 
 --
@@ -508,7 +539,7 @@ CREATE TABLE /*_*/templatelinks (
 
 CREATE UNIQUE INDEX /*i*/tl_from ON /*_*/templatelinks (tl_from,tl_namespace,tl_title);
 CREATE INDEX /*i*/tl_namespace ON /*_*/templatelinks (tl_namespace,tl_title,tl_from);
-CREATE INDEX /*i*/tl_backlinks_namespace ON /*_*/templatelinks (tl_namespace,tl_title,tl_from_namespace,tl_from);
+CREATE INDEX /*i*/tl_backlinks_namespace ON /*_*/templatelinks (tl_from_namespace,tl_namespace,tl_title,tl_from);
 
 
 --
@@ -530,7 +561,7 @@ CREATE TABLE /*_*/imagelinks (
 
 CREATE UNIQUE INDEX /*i*/il_from ON /*_*/imagelinks (il_from,il_to);
 CREATE INDEX /*i*/il_to ON /*_*/imagelinks (il_to,il_from);
-CREATE INDEX /*i*/il_backlinks_namespace ON /*_*/imagelinks (il_to,il_from_namespace,il_from);
+CREATE INDEX /*i*/il_backlinks_namespace ON /*_*/imagelinks (il_from_namespace,il_to,il_from);
 
 
 --
@@ -588,8 +619,8 @@ CREATE INDEX /*i*/cl_sortkey ON /*_*/categorylinks (cl_to,cl_type,cl_sortkey,cl_
 -- Used by the API (and some extensions)
 CREATE INDEX /*i*/cl_timestamp ON /*_*/categorylinks (cl_to,cl_timestamp);
 
--- FIXME: Not used, delete this
-CREATE INDEX /*i*/cl_collation ON /*_*/categorylinks (cl_collation);
+-- Used when updating collation (e.g. updateCollation.php)
+CREATE INDEX /*i*/cl_collation_ext ON /*_*/categorylinks (cl_collation, cl_to, cl_type, cl_from);
 
 --
 -- Track all existing categories.  Something is a category if 1) it has an en-
@@ -697,9 +728,6 @@ CREATE TABLE /*_*/site_stats (
   -- The single row should contain 1 here.
   ss_row_id int unsigned NOT NULL,
 
-  -- Total number of page views, if hit counters are enabled.
-  ss_total_views bigint unsigned default 0,
-
   -- Total number of edits performed.
   ss_total_edits bigint unsigned default 0,
 
@@ -726,19 +754,6 @@ CREATE TABLE /*_*/site_stats (
 -- Pointless index to assuage developer superstitions
 CREATE UNIQUE INDEX /*i*/ss_row_id ON /*_*/site_stats (ss_row_id);
 
-
---
--- Stores an ID for every time any article is visited;
--- depending on $wgHitcounterUpdateFreq, it is
--- periodically cleared and the page_counter column
--- in the page table updated for all the articles
--- that have been visited.)
---
-CREATE TABLE /*_*/hitcounter (
-  hc_id int unsigned NOT NULL
-) ENGINE=MEMORY MAX_ROWS=25000;
-
-
 --
 -- The internet is full of jerks, alas. Sometimes it's handy
 -- to block a vandal or troll account.
@@ -760,7 +775,7 @@ CREATE TABLE /*_*/ipblocks (
   ipb_by_text varchar(255) binary NOT NULL default '',
 
   -- Text comment made by blocker.
-  ipb_reason tinyblob NOT NULL,
+  ipb_reason varbinary(767) NOT NULL,
 
   -- Creation (or refresh) date in standard YMDHMS form.
   -- IP blocks expire automatically.
@@ -858,7 +873,7 @@ CREATE TABLE /*_*/image (
 
   -- Description field as entered by the uploader.
   -- This is displayed in image upload history and logs.
-  img_description tinyblob NOT NULL,
+  img_description varbinary(767) NOT NULL,
 
   -- user_id and user_name of uploader.
   img_user int unsigned NOT NULL default 0,
@@ -900,7 +915,7 @@ CREATE TABLE /*_*/oldimage (
   oi_width int NOT NULL default 0,
   oi_height int NOT NULL default 0,
   oi_bits int NOT NULL default 0,
-  oi_description tinyblob NOT NULL,
+  oi_description varbinary(767) NOT NULL,
   oi_user int unsigned NOT NULL default 0,
   oi_user_text varchar(255) binary NOT NULL,
   oi_timestamp binary(14) NOT NULL default '',
@@ -948,7 +963,7 @@ CREATE TABLE /*_*/filearchive (
   -- Deletion information, if this file is deleted.
   fa_deleted_user int,
   fa_deleted_timestamp binary(14) default '',
-  fa_deleted_reason text,
+  fa_deleted_reason varbinary(767) default '',
 
   -- Duped fields from image
   fa_size int unsigned default 0,
@@ -959,7 +974,7 @@ CREATE TABLE /*_*/filearchive (
   fa_media_type ENUM("UNKNOWN", "BITMAP", "DRAWING", "AUDIO", "VIDEO", "MULTIMEDIA", "OFFICE", "TEXT", "EXECUTABLE", "ARCHIVE") default NULL,
   fa_major_mime ENUM("unknown", "application", "audio", "image", "text", "video", "message", "model", "multipart", "chemical") default "unknown",
   fa_minor_mime varbinary(100) default "unknown",
-  fa_description tinyblob,
+  fa_description varbinary(767),
   fa_user int unsigned default 0,
   fa_user_text varchar(255) binary,
   fa_timestamp binary(14) default '',
@@ -1057,7 +1072,7 @@ CREATE TABLE /*_*/recentchanges (
   rc_title varchar(255) binary NOT NULL default '',
 
   -- as in revision...
-  rc_comment varchar(255) binary NOT NULL default '',
+  rc_comment varbinary(767) NOT NULL default '',
   rc_minor tinyint unsigned NOT NULL default 0,
 
   -- Edits by user accounts with the 'bot' rights key are
@@ -1124,6 +1139,7 @@ CREATE INDEX /*i*/rc_user_text ON /*_*/recentchanges (rc_user_text, rc_timestamp
 
 
 CREATE TABLE /*_*/watchlist (
+  wl_id int unsigned NOT NULL PRIMARY KEY AUTO_INCREMENT,
   -- Key to user.user_id
   wl_user int unsigned NOT NULL,
 
@@ -1265,7 +1281,7 @@ CREATE TABLE /*_*/logging (
   log_page int unsigned NULL,
 
   -- Freeform text. Interpreted as edit history comments.
-  log_comment varchar(255) NOT NULL default '',
+  log_comment varbinary(767) NOT NULL default '',
 
   -- miscellaneous parameters:
   -- LF separated list (old system) or serialized PHP array (new system)
@@ -1424,7 +1440,7 @@ CREATE TABLE /*_*/protected_titles (
   pt_namespace int NOT NULL,
   pt_title varchar(255) binary NOT NULL,
   pt_user int unsigned NOT NULL,
-  pt_reason tinyblob,
+  pt_reason varbinary(767),
   pt_timestamp binary(14) NOT NULL,
   pt_expiry varbinary(14) NOT NULL default '',
   pt_create_perm varbinary(60) NOT NULL
@@ -1507,34 +1523,13 @@ CREATE TABLE /*_*/l10n_cache (
 ) /*$wgDBTableOptions*/;
 CREATE INDEX /*i*/lc_lang_key ON /*_*/l10n_cache (lc_lang, lc_key);
 
--- Table for caching JSON message blobs for the resource loader
-CREATE TABLE /*_*/msg_resource (
-  -- Resource name
-  mr_resource varbinary(255) NOT NULL,
-  -- Language code
-  mr_lang varbinary(32) NOT NULL,
-  -- JSON blob
-  mr_blob mediumblob NOT NULL,
-  -- Timestamp of last update
-  mr_timestamp binary(14) NOT NULL
-) /*$wgDBTableOptions*/;
-CREATE UNIQUE INDEX /*i*/mr_resource_lang ON /*_*/msg_resource (mr_resource, mr_lang);
-
--- Table for administering which message is contained in which resource
-CREATE TABLE /*_*/msg_resource_links (
-  mrl_resource varbinary(255) NOT NULL,
-  -- Message key
-  mrl_message varbinary(255) NOT NULL
-) /*$wgDBTableOptions*/;
-CREATE UNIQUE INDEX /*i*/mrl_message_resource ON /*_*/msg_resource_links (mrl_message, mrl_resource);
-
 -- Table caching which local files a module depends on that aren't
 -- registered directly, used for fast retrieval of file dependency.
 -- Currently only used for tracking images that CSS depends on
 CREATE TABLE /*_*/module_deps (
   -- Module name
   md_module varbinary(255) NOT NULL,
-  -- Skin name
+  -- Module context vary (includes skin and language; called "md_skin" for legacy reasons)
   md_skin varbinary(32) NOT NULL,
   -- JSON blob with file dependencies
   md_deps mediumblob NOT NULL

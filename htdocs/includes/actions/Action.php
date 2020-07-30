@@ -96,12 +96,15 @@ abstract class Action {
 		$classOrCallable = self::getClass( $action, $page->getActionOverrides() );
 
 		if ( is_string( $classOrCallable ) ) {
+			if ( !class_exists( $classOrCallable ) ) {
+				return false;
+			}
 			$obj = new $classOrCallable( $page, $context );
 			return $obj;
 		}
 
 		if ( is_callable( $classOrCallable ) ) {
-			return call_user_func_array( $classOrCallable, array( $page, $context ) );
+			return call_user_func_array( $classOrCallable, [ $page, $context ] );
 		}
 
 		return $classOrCallable;
@@ -132,6 +135,8 @@ abstract class Action {
 		if ( $actionName === 'historysubmit' ) {
 			if ( $request->getBool( 'revisiondelete' ) ) {
 				$actionName = 'revisiondelete';
+			} elseif ( $request->getBool( 'editchangetags' ) ) {
+				$actionName = 'editchangetags';
 			} else {
 				$actionName = 'view';
 			}
@@ -162,7 +167,7 @@ abstract class Action {
 	 * @return bool
 	 */
 	final public static function exists( $name ) {
-		return self::getClass( $name, array() ) !== null;
+		return self::getClass( $name, [] ) !== null;
 	}
 
 	/**
@@ -250,7 +255,7 @@ abstract class Action {
 	 */
 	final public function msg() {
 		$params = func_get_args();
-		return call_user_func_array( array( $this->getContext(), 'msg' ), $params );
+		return call_user_func_array( [ $this->getContext(), 'msg' ], $params );
 	}
 
 	/**
@@ -368,10 +373,32 @@ abstract class Action {
 	 * Returns the description that goes below the \<h1\> tag
 	 * @since 1.17
 	 *
-	 * @return string
+	 * @return string HTML
 	 */
 	protected function getDescription() {
 		return $this->msg( strtolower( $this->getName() ) )->escaped();
+	}
+
+	/**
+	 * Adds help link with an icon via page indicators.
+	 * Link target can be overridden by a local message containing a wikilink:
+	 * the message key is: lowercase action name + '-helppage'.
+	 * @param string $to Target MediaWiki.org page title or encoded URL.
+	 * @param bool $overrideBaseUrl Whether $url is a full URL, to avoid MW.o.
+	 * @since 1.25
+	 */
+	public function addHelpLink( $to, $overrideBaseUrl = false ) {
+		global $wgContLang;
+		$msg = wfMessage( $wgContLang->lc(
+			Action::getActionName( $this->getContext() )
+			) . '-helppage' );
+
+		if ( !$msg->isDisabled() ) {
+			$helpUrl = Skin::makeUrl( $msg->plain() );
+			$this->getOutput()->addHelpLink( $helpUrl, true );
+		} else {
+			$this->getOutput()->addHelpLink( $to, $overrideBaseUrl );
+		}
 	}
 
 	/**
@@ -383,4 +410,23 @@ abstract class Action {
 	 * @throws ErrorPageError
 	 */
 	abstract public function show();
+
+	/**
+	 * Call wfTransactionalTimeLimit() if this request was POSTed
+	 * @since 1.26
+	 */
+	protected function useTransactionalTimeLimit() {
+		if ( $this->getRequest()->wasPosted() ) {
+			wfTransactionalTimeLimit();
+		}
+	}
+
+	/**
+	 * Indicates whether this action may perform database writes
+	 * @return bool
+	 * @since 1.27
+	 */
+	public function doesWrites() {
+		return false;
+	}
 }

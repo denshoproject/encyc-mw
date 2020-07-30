@@ -32,7 +32,7 @@ abstract class PageQueryPage extends QueryPage {
 	 * like page existence and information for stub color and redirect hints.
 	 * This should be done for live data and cached data.
 	 *
-	 * @param DatabaseBase $db
+	 * @param IDatabase $db
 	 * @param ResultWrapper $res
 	 */
 	public function preprocessResults( $db, $res ) {
@@ -65,7 +65,7 @@ abstract class PageQueryPage extends QueryPage {
 			$text = $wgContLang->convert( $title->getPrefixedText() );
 			return Linker::link( $title, htmlspecialchars( $text ) );
 		} else {
-			return Html::element( 'span', array( 'class' => 'mw-invalidtitle' ),
+			return Html::element( 'span', [ 'class' => 'mw-invalidtitle' ],
 				Linker::getInvalidTitleDescription( $this->getContext(), $row->namespace, $row->title ) );
 		}
 	}

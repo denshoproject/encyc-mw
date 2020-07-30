@@ -32,7 +32,7 @@ class RevDelArchivedFileList extends RevDelFileList {
 	}
 
 	/**
-	 * @param DatabaseBase $db
+	 * @param IDatabase $db
 	 * @return mixed
 	 */
 	public function doQuery( $db ) {
@@ -41,12 +41,12 @@ class RevDelArchivedFileList extends RevDelFileList {
 		return $db->select(
 			'filearchive',
 			ArchivedFile::selectFields(),
-			array(
+			[
 				'fa_name' => $this->title->getDBkey(),
 				'fa_id' => $ids
-			),
+			],
 			__METHOD__,
-			array( 'ORDER BY' => 'fa_id DESC' )
+			[ 'ORDER BY' => 'fa_id DESC' ]
 		);
 	}
 

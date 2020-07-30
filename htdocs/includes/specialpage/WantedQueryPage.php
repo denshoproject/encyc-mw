@@ -37,7 +37,7 @@ abstract class WantedQueryPage extends QueryPage {
 
 	/**
 	 * Cache page existence for performance
-	 * @param DatabaseBase $db
+	 * @param IDatabase $db
 	 * @param ResultWrapper $res
 	 */
 	function preprocessResults( $db, $res ) {
@@ -85,9 +85,9 @@ abstract class WantedQueryPage extends QueryPage {
 				$pageLink = Linker::link(
 					$title,
 					null,
-					array(),
-					array(),
-					array( 'broken' )
+					[],
+					[],
+					[ 'broken' ]
 				);
 			}
 			return $this->getLanguage()->specialList( $pageLink, $this->makeWlhLink( $title, $result ) );
@@ -109,7 +109,7 @@ abstract class WantedQueryPage extends QueryPage {
 	 * @note This will only be run if the page is cached (ie $wgMiserMode = true)
 	 *   unless forceExistenceCheck() is true.
 	 * @since 1.24
-	 * @return boolean
+	 * @return bool
 	 */
 	protected function existenceCheck( Title $title ) {
 		return $title->isKnown();

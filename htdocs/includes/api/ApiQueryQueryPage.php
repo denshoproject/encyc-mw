@@ -36,7 +36,7 @@ class ApiQueryQueryPage extends ApiQueryGeneratorBase {
 		parent::__construct( $query, $moduleName, 'qp' );
 		// Build mapping from special page names to QueryPage classes
 		$uselessQueryPages = $this->getConfig()->get( 'APIUselessQueryPages' );
-		$this->qpMap = array();
+		$this->qpMap = [];
 		foreach ( QueryPage::getPages() as $page ) {
 			if ( !in_array( $page[1], $uselessQueryPages ) ) {
 				$this->qpMap[$page[1]] = $page[0];
@@ -65,12 +65,12 @@ class ApiQueryQueryPage extends ApiQueryGeneratorBase {
 			$this->dieUsageMsg( 'specialpage-cantexecute' );
 		}
 
-		$r = array( 'name' => $params['page'] );
+		$r = [ 'name' => $params['page'] ];
 		if ( $qp->isCached() ) {
 			if ( !$qp->isCacheable() ) {
-				$r['disabled'] = '';
+				$r['disabled'] = true;
 			} else {
-				$r['cached'] = '';
+				$r['cached'] = true;
 				$ts = $qp->getCachedTimestamp();
 				if ( $ts ) {
 					$r['cachedtimestamp'] = wfTimestamp( TS_ISO_8601, $ts );
@@ -78,7 +78,7 @@ class ApiQueryQueryPage extends ApiQueryGeneratorBase {
 				$r['maxresults'] = $this->getConfig()->get( 'QueryCacheLimit' );
 			}
 		}
-		$result->addValue( array( 'query' ), $this->getModuleName(), $r );
+		$result->addValue( [ 'query' ], $this->getModuleName(), $r );
 
 		if ( $qp->isCached() && !$qp->isCacheable() ) {
 			// Disabled query page, don't run the query
@@ -87,7 +87,7 @@ class ApiQueryQueryPage extends ApiQueryGeneratorBase {
 
 		$res = $qp->doQuery( $params['offset'], $params['limit'] + 1 );
 		$count = 0;
-		$titles = array();
+		$titles = [];
 		foreach ( $res as $row ) {
 			if ( ++$count > $params['limit'] ) {
 				// We've had enough
@@ -97,19 +97,19 @@ class ApiQueryQueryPage extends ApiQueryGeneratorBase {
 
 			$title = Title::makeTitle( $row->namespace, $row->title );
 			if ( is_null( $resultPageSet ) ) {
-				$data = array( 'value' => $row->value );
+				$data = [ 'value' => $row->value ];
 				if ( $qp->usesTimestamps() ) {
 					$data['timestamp'] = wfTimestamp( TS_ISO_8601, $row->value );
 				}
 				self::addTitleInfo( $data, $title );
 
 				foreach ( $row as $field => $value ) {
-					if ( !in_array( $field, array( 'namespace', 'title', 'value', 'qc_type' ) ) ) {
+					if ( !in_array( $field, [ 'namespace', 'title', 'value', 'qc_type' ] ) ) {
 						$data['databaseResult'][$field] = $value;
 					}
 				}
 
-				$fit = $result->addValue( array( 'query', $this->getModuleName(), 'results' ), null, $data );
+				$fit = $result->addValue( [ 'query', $this->getModuleName(), 'results' ], null, $data );
 				if ( !$fit ) {
 					$this->setContinueEnumParameter( 'offset', $params['offset'] + $count - 1 );
 					break;
@@ -119,8 +119,8 @@ class ApiQueryQueryPage extends ApiQueryGeneratorBase {
 			}
 		}
 		if ( is_null( $resultPageSet ) ) {
-			$result->setIndexedTagName_internal(
-				array( 'query', $this->getModuleName(), 'results' ),
+			$result->addIndexedTagName(
+				[ 'query', $this->getModuleName(), 'results' ],
 				'page'
 			);
 		} else {
@@ -139,38 +139,30 @@ class ApiQueryQueryPage extends ApiQueryGeneratorBase {
 	}
 
 	public function getAllowedParams() {
-		return array(
-			'page' => array(
+		return [
+			'page' => [
 				ApiBase::PARAM_TYPE => array_keys( $this->qpMap ),
 				ApiBase::PARAM_REQUIRED => true
-			),
-			'offset' => 0,
-			'limit' => array(
+			],
+			'offset' => [
+				ApiBase::PARAM_DFLT => 0,
+				ApiBase::PARAM_HELP_MSG => 'api-help-param-continue',
+			],
+			'limit' => [
 				ApiBase::PARAM_DFLT => 10,
 				ApiBase::PARAM_TYPE => 'limit',
 				ApiBase::PARAM_MIN => 1,
 				ApiBase::PARAM_MAX => ApiBase::LIMIT_BIG1,
 				ApiBase::PARAM_MAX2 => ApiBase::LIMIT_BIG2
-			),
-		);
+			],
+		];
 	}
 
-	public function getParamDescription() {
-		return array(
-			'page' => 'The name of the special page. Note, this is case sensitive',
-			'offset' => 'When more results are available, use this to continue',
-			'limit' => 'Number of results to return',
-		);
-	}
-
-	public function getDescription() {
-		return 'Get a list provided by a QueryPage-based special page.';
-	}
-
-	public function getExamples() {
-		return array(
-			'api.php?action=query&list=querypage&qppage=Ancientpages'
-		);
+	protected function getExamplesMessages() {
+		return [
+			'action=query&list=querypage&qppage=Ancientpages'
+				=> 'apihelp-query+querypage-example-ancientpages',
+		];
 	}
 
 	public function getHelpUrls() {

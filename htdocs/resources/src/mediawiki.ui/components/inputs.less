@@ -9,7 +9,7 @@
 	font-style: italic;
 	font-weight: normal;
 }
-// Inputs
+// Text inputs
 //
 // Apply the mw-ui-input class to input and textarea fields.
 //
@@ -27,21 +27,16 @@
 //
 // Styleguide 1.1.
 .mw-ui-input {
-	// turn off default input styling for input[type="search"] fields
-	-webkit-appearance: none;
-	border: 1px solid @colorFieldBorder;
-	.box-sizing(border-box);
-	width: 100%;
-	padding: .4em .3em .2em .6em;
+	.box-sizing( border-box );
 	display: block;
-	vertical-align: middle;
+	width: 100%;
+	border: 1px solid @colorFieldBorder;
 	border-radius: @borderRadius;
-	// Override user agent stylesheet properties. Instead use parent element.
-	color: inherit;
+	padding: 0.3em 0.3em 0.3em 0.6em;
 	font-family: inherit;
 	font-size: inherit;
 	line-height: inherit;
-	.transition(~"border linear .2s, box-shadow linear .2s");
+	vertical-align: middle;
 
 	// Placeholder text styling must be set individually for each browser @winter
 	&::-webkit-input-placeholder { // webkit
@@ -66,10 +61,33 @@
 	}
 
 	&:focus {
-		box-shadow: inset .45em 0 0 @colorProgressive;
-		border-color: @colorGrayDark;
+		box-shadow: inset 0 0 0 2px @colorProgressive;
+		// Color being used to match inset shadow, not semantic reasons
+		border-color: @colorProgressive;
 		// Remove focus glow on input[type="search"]
 		outline: 0;
+	}
+
+	&:disabled {
+		border-color: @colorGray14;
+		color: @colorGray12;
+	}
+
+	// Normalize styling for `<input type="search">`
+	&[type="search"] {
+		// Correct the odd appearance in Chrome and Safari 5
+		-webkit-appearance: textfield;
+
+		// Remove proprietary clear button in IE 10-11
+		&::-ms-clear {
+			display: none;
+		}
+
+		// Remove the inner padding and cancel buttons in Chrome on OS X and Safari on OS X
+		&::-webkit-search-cancel-button,
+		&::-webkit-search-decoration {
+	 		-webkit-appearance: none;
+		}
 	}
 }
 
@@ -83,7 +101,7 @@ textarea.mw-ui-input {
 //
 // Markup:
 // <input class="mw-ui-input mw-ui-input-inline">
-// <button class="mw-ui-button mw-ui-constructive">go</button>
+// <button class="mw-ui-button mw-ui-constructive">Submit</button>
 //
 // Styleguide 1.2.
 input[type="number"],

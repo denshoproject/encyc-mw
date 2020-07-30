@@ -1,10 +1,10 @@
 <?php
 
 class ExtParserFunctions {
-	static $mExprParser;
-	static $mTimeCache = array();
-	static $mTimeChars = 0;
-	static $mMaxTimeChars = 6000; # ~10 seconds
+	public static $mExprParser;
+	public static $mTimeCache = array();
+	public static $mTimeChars = 0;
+	public static $mMaxTimeChars = 6000; # ~10 seconds
 
 	/**
 	 * @param $parser Parser
@@ -12,7 +12,6 @@ class ExtParserFunctions {
 	 */
 	public static function clearState( $parser ) {
 		self::$mTimeChars = 0;
-		$parser->pf_markerRegex = null;
 		return true;
 	}
 
@@ -28,38 +27,6 @@ class ExtParserFunctions {
 			$wgHooks['ParserClearState'][] = __CLASS__ . '::clearState';
 			$done = true;
 		}
-	}
-
-	/**
-	 * Get the marker regex. Cached.
-	 * @param $parser Parser
-	 * @return
-	 */
-	public static function getMarkerRegex( $parser ) {
-		self::registerClearHook();
-		if ( isset( $parser->pf_markerRegex ) ) {
-			return $parser->pf_markerRegex;
-		}
-
-		wfProfileIn( __METHOD__ );
-
-		$prefix = preg_quote( $parser->uniqPrefix(), '/' );
-
-		$suffix = preg_quote( Parser::MARKER_SUFFIX, '/' );
-
-		$parser->pf_markerRegex = '/' . $prefix . '(?:(?!' . $suffix . ').)*' . $suffix . '/us';
-
-		wfProfileOut( __METHOD__ );
-		return $parser->pf_markerRegex;
-	}
-
-	/**
-	 * @param $parser Parser
-	 * @param $text string
-	 * @return string
-	 */
-	private static function killMarkers ( $parser, $text ) {
-		return preg_replace( self::getMarkerRegex( $parser ), '' , $text );
 	}
 
 	/**
@@ -96,7 +63,7 @@ class ExtParserFunctions {
 		try {
 			$ret = self::getExprParser()->doExpression( $expr );
 			if ( is_numeric( $ret ) ) {
-				$ret = floatval( $ret );
+				$ret = (float)$ret;
 			}
 			if ( $ret ) {
 				return $then;
@@ -149,6 +116,9 @@ class ExtParserFunctions {
 	public static function ifeqObj( $parser, $frame, $args ) {
 		$left = isset( $args[0] ) ? self::decodeTrimExpand( $args[0], $frame ) : '';
 		$right = isset( $args[1] ) ? self::decodeTrimExpand( $args[1], $frame ) : '';
+
+		// Strict compare is not possible here. 01 should equal 1 for example.
+		/** @noinspection TypeUnsafeComparisonInspection */
 		if ( $left == $right ) {
 			return isset( $args[2] ) ? trim( $frame->expand( $args[2] ) ) : '';
 		} else {
@@ -198,7 +168,7 @@ class ExtParserFunctions {
 	 * @return string
 	 */
 	public static function switchObj( $parser, $frame, $args ) {
-		if ( count( $args ) == 0 ) {
+		if ( count( $args ) === 0 ) {
 			return '';
 		}
 		$primary = self::decodeTrimExpand( array_shift( $args ), $frame );
@@ -221,6 +191,7 @@ class ExtParserFunctions {
 					return trim( $frame->expand( $valueNode ) );
 				} else {
 					$test = self::decodeTrimExpand( $nameNode, $frame );
+					/** @noinspection TypeUnsafeComparisonInspection */
 					if ( $test == $primary ) {
 						# Found a match, return now
 						return trim( $frame->expand( $valueNode ) );
@@ -235,6 +206,7 @@ class ExtParserFunctions {
 				$lastItemHadNoEquals = true;
 				// $lastItem is an "out" variable
 				$decodedTest = self::decodeTrimExpand( $valueNode, $frame, $lastItem );
+				/** @noinspection TypeUnsafeComparisonInspection */
 				if ( $decodedTest == $primary ) {
 					$found = true;
 				} elseif ( $mwDefault->matchStartToEnd( $decodedTest ) ) {
@@ -269,22 +241,22 @@ class ExtParserFunctions {
 	public static function rel2abs( $parser , $to = '' , $from = '' ) {
 
 		$from = trim( $from );
-		if ( $from == '' ) {
+		if ( $from === '' ) {
 			$from = $parser->getTitle()->getPrefixedText();
 		}
 
 		$to = rtrim( $to , ' /' );
 
 		// if we have an empty path, or just one containing a dot
-		if ( $to == '' || $to == '.' ) {
+		if ( $to === '' || $to === '.' ) {
 			return $from;
 		}
 
 		// if the path isn't relative
-		if ( substr( $to , 0 , 1 ) != '/' &&
-		 substr( $to , 0 , 2 ) != './' &&
-		 substr( $to , 0 , 3 ) != '../' &&
-		 $to != '..' )
+		if ( substr( $to , 0 , 1 ) !== '/' &&
+		 substr( $to , 0 , 2 ) !== './' &&
+		 substr( $to , 0 , 3 ) !== '../' &&
+		 $to !== '..' )
 		{
 			$from = '';
 		}
@@ -303,7 +275,7 @@ class ExtParserFunctions {
 		$newExploded = array();
 
 		foreach ( $exploded as $current ) {
-			if ( $current == '..' ) { // removing one level
+			if ( $current === '..' ) { // removing one level
 				if ( !count( $newExploded ) ) {
 					// attempted to access a node above root node
 					$msg = wfMessage( 'pfunc_rel2abs_invalid_depth', $fullPath )->inContentLanguage()->escaped();
@@ -335,7 +307,7 @@ class ExtParserFunctions {
 		$title = Title::newFromText( $titletext );
 		$wgContLang->findVariantLink( $titletext, $title, true );
 		if ( $title ) {
-			if ( $title->getNamespace() == NS_MEDIA ) {
+			if ( $title->getNamespace() === NS_MEDIA ) {
 				/* If namespace is specified as NS_MEDIA, then we want to
 				 * check the physical file, not the "description" page.
 				 */
@@ -349,7 +321,7 @@ class ExtParserFunctions {
 				$parser->mOutput->addImage(
 					$file->getName(), $file->getTimestamp(), $file->getSha1() );
 				return $file->exists() ? $then : $else;
-			} elseif ( $title->getNamespace() == NS_SPECIAL ) {
+			} elseif ( $title->getNamespace() === NS_SPECIAL ) {
 				/* Don't bother with the count for special pages,
 				 * since their existence can be checked without
 				 * accessing the database.
@@ -365,7 +337,7 @@ class ExtParserFunctions {
 				$pdbk = $title->getPrefixedDBkey();
 				$lc = LinkCache::singleton();
 				$id = $lc->getGoodLinkID( $pdbk );
-				if ( $id != 0 ) {
+				if ( $id !== 0 ) {
 					$parser->mOutput->addLink( $title, $id );
 					return $then;
 				} elseif ( $lc->isBadLink( $pdbk ) ) {
@@ -570,8 +542,8 @@ class ExtParserFunctions {
 	 * @return string
 	 */
 	public static function titleparts( $parser, $title = '', $parts = 0, $offset = 0 ) {
-		$parts = intval( $parts );
-		$offset = intval( $offset );
+		$parts = (int)$parts;
+		$offset = (int)$offset;
 		$ntitle = Title::newFromText( $title );
 		if ( $ntitle instanceof Title ) {
 			$bits = explode( '/', $ntitle->getPrefixedText(), 25 );
@@ -581,7 +553,7 @@ class ExtParserFunctions {
 				if ( $offset > 0 ) {
 					--$offset;
 				}
-				if ( $parts == 0 ) {
+				if ( $parts === 0 ) {
 					return implode( '/', array_slice( $bits, $offset ) );
 				} else {
 					return implode( '/', array_slice( $bits, $offset, $parts ) );
@@ -621,13 +593,8 @@ class ExtParserFunctions {
 	 * @return int
 	 */
 	public static function runLen ( $parser, $inStr = '' ) {
-		wfProfileIn( __METHOD__ );
-
-		$inStr = self::killMarkers( $parser, (string)$inStr );
-		$len = mb_strlen( $inStr );
-
-		wfProfileOut( __METHOD__ );
-		return $len;
+		$inStr = $parser->killMarkers( (string)$inStr );
+		return mb_strlen( $inStr );
 	}
 
 	/**
@@ -644,23 +611,19 @@ class ExtParserFunctions {
 	 * @return int|string
 	 */
 	public static function runPos ( $parser, $inStr = '', $inNeedle = '', $inOffset = 0 ) {
-		wfProfileIn( __METHOD__ );
-
-		$inStr = self::killMarkers( $parser, (string)$inStr );
-		$inNeedle = self::killMarkers( $parser, (string)$inNeedle );
+		$inStr = $parser->killMarkers( (string)$inStr );
+		$inNeedle = $parser->killMarkers( (string)$inNeedle );
 
 		if ( !self::checkLength( $inStr ) ||
 			!self::checkLength( $inNeedle ) ) {
-			wfProfileOut( __METHOD__ );
 			return self::tooLongError();
 		}
 
-		if ( $inNeedle == '' ) { $inNeedle = ' '; }
+		if ( $inNeedle === '' ) { $inNeedle = ' '; }
 
-		$pos = mb_strpos( $inStr, $inNeedle, $inOffset );
-		if ( $pos === false ) { $pos = ""; }
+		$pos = mb_strpos( $inStr, $inNeedle, (int)$inOffset );
+		if ( $pos === false ) { $pos = ''; }
 
-		wfProfileOut( __METHOD__ );
 		return $pos;
 	}
 
@@ -677,23 +640,19 @@ class ExtParserFunctions {
 	 * @return int|string
 	 */
 	public static function runRPos ( $parser, $inStr = '', $inNeedle = '' ) {
-		wfProfileIn( __METHOD__ );
-
-		$inStr = self::killMarkers( $parser, (string)$inStr );
-		$inNeedle = self::killMarkers( $parser, (string)$inNeedle );
+		$inStr = $parser->killMarkers( (string)$inStr );
+		$inNeedle = $parser->killMarkers( (string)$inNeedle );
 
 		if ( !self::checkLength( $inStr ) ||
 			!self::checkLength( $inNeedle ) ) {
-			wfProfileOut( __METHOD__ );
 			return self::tooLongError();
 		}
 
-		if ( $inNeedle == '' ) { $inNeedle = ' '; }
+		if ( $inNeedle === '' ) { $inNeedle = ' '; }
 
 		$pos = mb_strrpos( $inStr, $inNeedle );
 		if ( $pos === false ) { $pos = -1; }
 
-		wfProfileOut( __METHOD__ );
 		return $pos;
 	}
 
@@ -716,22 +675,18 @@ class ExtParserFunctions {
 	 * @return string
 	 */
 	public static function runSub ( $parser, $inStr = '', $inStart = 0, $inLength = 0 ) {
-		wfProfileIn( __METHOD__ );
-
-		$inStr = self::killMarkers( $parser, (string)$inStr );
+		$inStr = $parser->killMarkers( (string)$inStr );
 
 		if ( !self::checkLength( $inStr ) ) {
-			wfProfileOut( __METHOD__ );
 			return self::tooLongError();
 		}
 
-		if ( intval( $inLength ) == 0 ) {
-			$result = mb_substr( $inStr, intval( $inStart ) );
+		if ( (int)$inLength === 0 ) {
+			$result = mb_substr( $inStr, (int)$inStart );
 		} else {
-			$result = mb_substr( $inStr, intval( $inStart ), intval( $inLength ) );
+			$result = mb_substr( $inStr, (int)$inStart, (int)$inLength );
 		}
 
-		wfProfileOut( __METHOD__ );
 		return $result;
 	}
 
@@ -741,30 +696,26 @@ class ExtParserFunctions {
 	 * Returns number of occurrences of "substr" in "string".
 	 *
 	 * Note: If "substr" is empty, a single space is used.
-	 * @param $parser
+	 * @param $parser Parser
 	 * @param $inStr string
 	 * @param $inSubStr string
 	 * @return int|string
 	 */
 	public static function runCount ( $parser, $inStr = '', $inSubStr = '' ) {
-		wfProfileIn( __METHOD__ );
-
-		$inStr = self::killMarkers( $parser, (string)$inStr );
-		$inSubStr = self::killMarkers( $parser, (string)$inSubStr );
+		$inStr = $parser->killMarkers( (string)$inStr );
+		$inSubStr = $parser->killMarkers( (string)$inSubStr );
 
 		if ( !self::checkLength( $inStr ) ||
 			!self::checkLength( $inSubStr ) ) {
-			wfProfileOut( __METHOD__ );
 			return self::tooLongError();
 		}
 
-		if ( $inSubStr == '' ) {
+		if ( $inSubStr === '' ) {
 			$inSubStr = ' ';
 		}
 
 		$result = mb_substr_count( $inStr, $inSubStr );
 
-		wfProfileOut( __METHOD__ );
 		return $result;
 	}
 
@@ -786,20 +737,18 @@ class ExtParserFunctions {
 	public static function runReplace( $parser, $inStr = '',
 			$inReplaceFrom = '', $inReplaceTo = '', $inLimit = -1 ) {
 		global $wgPFStringLengthLimit;
-		wfProfileIn( __METHOD__ );
 
-		$inStr = self::killMarkers( $parser, (string)$inStr );
-		$inReplaceFrom = self::killMarkers( $parser, (string)$inReplaceFrom );
-		$inReplaceTo = self::killMarkers( $parser, (string)$inReplaceTo );
+		$inStr = $parser->killMarkers( (string)$inStr );
+		$inReplaceFrom = $parser->killMarkers( (string)$inReplaceFrom );
+		$inReplaceTo = $parser->killMarkers( (string)$inReplaceTo );
 
 		if ( !self::checkLength( $inStr ) ||
 			!self::checkLength( $inReplaceFrom ) ||
 			!self::checkLength( $inReplaceTo ) ) {
-			wfProfileOut( __METHOD__ );
 			return self::tooLongError();
 		}
 
-		if ( $inReplaceFrom == '' ) { $inReplaceFrom = ' '; }
+		if ( $inReplaceFrom === '' ) { $inReplaceFrom = ' '; }
 
 		// Precompute limit to avoid generating enormous string:
 		$diff = mb_strlen( $inReplaceTo ) - mb_strlen( $inReplaceFrom );
@@ -809,9 +758,11 @@ class ExtParserFunctions {
 			$limit = -1;
 		}
 
-		$inLimit = intval( $inLimit );
+		$inLimit = (int)$inLimit;
 		if ( $inLimit >= 0 ) {
-			if ( $limit > $inLimit || $limit == -1 ) { $limit = $inLimit; }
+			if ( $limit > $inLimit || $limit == -1 ) {
+				$limit = $inLimit;
+			}
 		}
 
 		// Use regex to allow limit and handle UTF-8 correctly.
@@ -822,11 +773,9 @@ class ExtParserFunctions {
 						$inReplaceTo, $inStr, $limit );
 
 		if ( !self::checkLength( $result ) ) {
-			wfProfileOut( __METHOD__ );
 			return self::tooLongError();
 		}
 
-		wfProfileOut( __METHOD__ );
 		return $result;
 	}
 
@@ -848,18 +797,15 @@ class ExtParserFunctions {
 	 * @return string
 	 */
 	public static function runExplode ( $parser, $inStr = '', $inDiv = '', $inPos = 0, $inLim = null ) {
-		wfProfileIn( __METHOD__ );
+		$inStr = $parser->killMarkers( (string)$inStr );
+		$inDiv = $parser->killMarkers( (string)$inDiv );
 
-		$inStr = self::killMarkers( $parser, (string)$inStr );
-		$inDiv = self::killMarkers( $parser, (string)$inDiv );
-
-		if ( $inDiv == '' ) {
+		if ( $inDiv === '' ) {
 			$inDiv = ' ';
 		}
 
 		if ( !self::checkLength( $inStr ) ||
 			!self::checkLength( $inDiv ) ) {
-			wfProfileOut( __METHOD__ );
 			return self::tooLongError();
 		}
 
@@ -875,7 +821,6 @@ class ExtParserFunctions {
 			$result = '';
 		}
 
-		wfProfileOut( __METHOD__ );
 		return $result;
 	}
 
@@ -888,18 +833,12 @@ class ExtParserFunctions {
 	 * @return string
 	 */
 	public static function runUrlDecode( $parser, $inStr = '' ) {
-		wfProfileIn( __METHOD__ );
-
-		$inStr = self::killMarkers( $parser, (string)$inStr );
+		$inStr = $parser->killMarkers( (string)$inStr );
 		if ( !self::checkLength( $inStr ) ) {
-			wfProfileOut( __METHOD__ );
 			return self::tooLongError();
 		}
 
-		$result = urldecode( $inStr );
-
-		wfProfileOut( __METHOD__ );
-		return $result;
+		return urldecode( $inStr );
 	}
 
 	/**

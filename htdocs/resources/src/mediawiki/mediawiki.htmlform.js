@@ -16,7 +16,7 @@
 	 * "foo[bar][baz]").
 	 *
 	 * @private
-	 * @param {jQuery} element
+	 * @param {jQuery} $el
 	 * @param {string} name
 	 * @return {jQuery|null}
 	 */
@@ -44,8 +44,8 @@
 	 * dependent fields for a hide-if specification.
 	 *
 	 * @private
-	 * @param {jQuery} element
-	 * @param {Array} hide-if spec
+	 * @param {jQuery} $el
+	 * @param {Array} spec
 	 * @return {Array}
 	 * @return {jQuery} return.0 Dependent fields
 	 * @return {Function} return.1 Test function
@@ -53,7 +53,7 @@
 	function hideIfParse( $el, spec ) {
 		var op, i, l, v, $field, $fields, fields, func, funcs, getVal;
 
-		op = spec[0];
+		op = spec[ 0 ];
 		l = spec.length;
 		switch ( op ) {
 			case 'AND':
@@ -63,12 +63,12 @@
 				funcs = [];
 				fields = [];
 				for ( i = 1; i < l; i++ ) {
-					if ( !$.isArray( spec[i] ) ) {
+					if ( !$.isArray( spec[ i ] ) ) {
 						throw new Error( op + ' parameters must be arrays' );
 					}
-					v = hideIfParse( $el, spec[i] );
-					fields = fields.concat( v[0].toArray() );
-					funcs.push( v[1] );
+					v = hideIfParse( $el, spec[ i ] );
+					fields = fields.concat( v[ 0 ].toArray() );
+					funcs.push( v[ 1 ] );
 				}
 				$fields = $( fields );
 
@@ -78,7 +78,7 @@
 						func = function () {
 							var i;
 							for ( i = 0; i < l; i++ ) {
-								if ( !funcs[i]() ) {
+								if ( !funcs[ i ]() ) {
 									return false;
 								}
 							}
@@ -90,7 +90,7 @@
 						func = function () {
 							var i;
 							for ( i = 0; i < l; i++ ) {
-								if ( funcs[i]() ) {
+								if ( funcs[ i ]() ) {
 									return true;
 								}
 							}
@@ -102,7 +102,7 @@
 						func = function () {
 							var i;
 							for ( i = 0; i < l; i++ ) {
-								if ( !funcs[i]() ) {
+								if ( !funcs[ i ]() ) {
 									return true;
 								}
 							}
@@ -114,7 +114,7 @@
 						func = function () {
 							var i;
 							for ( i = 0; i < l; i++ ) {
-								if ( funcs[i]() ) {
+								if ( funcs[ i ]() ) {
 									return false;
 								}
 							}
@@ -129,12 +129,12 @@
 				if ( l !== 2 ) {
 					throw new Error( 'NOT takes exactly one parameter' );
 				}
-				if ( !$.isArray( spec[1] ) ) {
+				if ( !$.isArray( spec[ 1 ] ) ) {
 					throw new Error( 'NOT parameters must be arrays' );
 				}
-				v = hideIfParse( $el, spec[1] );
-				$fields = v[0];
-				func = v[1];
+				v = hideIfParse( $el, spec[ 1 ] );
+				$fields = v[ 0 ];
+				func = v[ 1 ];
 				return [ $fields, function () {
 					return !func();
 				} ];
@@ -144,13 +144,13 @@
 				if ( l !== 3 ) {
 					throw new Error( op + ' takes exactly two parameters' );
 				}
-				$field = hideIfGetField( $el, spec[1] );
+				$field = hideIfGetField( $el, spec[ 1 ] );
 				if ( !$field ) {
 					return [ $(), function () {
 						return false;
 					} ];
 				}
-				v = spec[2];
+				v = spec[ 2 ];
 
 				if ( $field.first().prop( 'type' ) === 'radio' ||
 					$field.first().prop( 'type' ) === 'checkbox'
@@ -203,7 +203,7 @@
 	 * jQuery plugin to fade or snap to hiding state.
 	 *
 	 * @param {boolean} [instantToggle=false]
-	 * @return jQuery
+	 * @return {jQuery}
 	 * @chainable
 	 */
 	$.fn.goOut = function ( instantToggle ) {
@@ -222,11 +222,11 @@
 	 * @param {Function} callback
 	 * @param {boolean|jQuery.Event} callback.immediate True when the event is called immediately,
 	 *  an event object when triggered from an event.
-	 * @return jQuery
 	 * @chainable
+	 * @return {jQuery}
 	 */
 	mw.log.deprecate( $.fn, 'liveAndTestAtStart', function ( callback ) {
-		this
+		return this
 			// Can't really migrate to .on() generically, needs knowledge of
 			// calling code to know the correct selector. Fix callers and
 			// get rid of this .liveAndTestAtStart() hack.
@@ -237,7 +237,9 @@
 	} );
 
 	function enhance( $root ) {
-		var $matrixTooltips, $autocomplete;
+		var $matrixTooltips, $autocomplete,
+			// cache the separator to avoid object creation on each keypress
+			colonSeparator = mw.message( 'colon-separator' ).text();
 
 		/**
 		 * @ignore
@@ -261,6 +263,36 @@
 				handleSelectOrOther.call( this, true );
 			} );
 
+		// Add a dynamic max length to the reason field of SelectAndOther
+		// This checks the length together with the value from the select field
+		// When the reason list is changed and the bytelimit is longer than the allowed,
+		// nothing is done
+		$root
+			.find( '.mw-htmlform-select-and-other-field' )
+			.each( function () {
+				var $this = $( this ),
+					// find the reason list
+					$reasonList = $root.find( '#' + $this.data( 'id-select' ) ),
+					// cache the current selection to avoid expensive lookup
+					currentValReasonList = $reasonList.val();
+
+				$reasonList.change( function () {
+					currentValReasonList = $reasonList.val();
+				} );
+
+				$this.byteLimit( function ( input ) {
+					// Should be built the same as in HTMLSelectAndOtherField::loadDataFromRequest
+					var comment = currentValReasonList;
+					if ( comment === 'other' ) {
+						comment = input;
+					} else if ( input !== '' ) {
+						// Entry from drop down menu + additional comment
+						comment += colonSeparator + input;
+					}
+					return comment;
+				} );
+			} );
+
 		// Set up hide-if elements
 		$root.find( '.mw-htmlform-hide-if' ).each( function () {
 			var v, $fields, test, func,
@@ -272,8 +304,8 @@
 			}
 
 			v = hideIfParse( $el, spec );
-			$fields = v[0];
-			test = v[1];
+			$fields = v[ 0 ];
+			test = v[ 1 ];
 			func = function () {
 				if ( test() ) {
 					$el.hide();
@@ -368,12 +400,12 @@
 		}
 
 		// Add/remove cloner clones without having to resubmit the form
-		$root.find( '.mw-htmlform-cloner-delete-button' ).click( function ( ev ) {
+		$root.find( '.mw-htmlform-cloner-delete-button' ).filter( ':input' ).click( function ( ev ) {
 			ev.preventDefault();
 			$( this ).closest( 'li.mw-htmlform-cloner-li' ).remove();
 		} );
 
-		$root.find( '.mw-htmlform-cloner-create-button' ).click( function ( ev ) {
+		$root.find( '.mw-htmlform-cloner-create-button' ).filter( ':input' ).click( function ( ev ) {
 			var $ul, $li, html;
 
 			ev.preventDefault();
@@ -381,7 +413,7 @@
 			$ul = $( this ).prev( 'ul.mw-htmlform-cloner-ul' );
 
 			html = $ul.data( 'template' ).replace(
-				new RegExp( $.escapeRE( $ul.data( 'uniqueId' ) ), 'g' ),
+				new RegExp( mw.RegExp.escape( $ul.data( 'uniqueId' ) ), 'g' ),
 				'clone' + ( ++cloneCounter )
 			);
 

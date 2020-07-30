@@ -42,7 +42,7 @@ class UpdateSpecialPages extends Maintenance {
 	public function execute() {
 		global $wgQueryCacheLimit, $wgDisableQueryPageUpdate;
 
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = $this->getDB( DB_MASTER );
 
 		$this->doSpecialPageCacheUpdates( $dbw );
 
@@ -71,26 +71,24 @@ class UpdateSpecialPages extends Maintenance {
 			if ( $specialObj instanceof QueryPage ) {
 				$queryPage = $specialObj;
 			} else {
-				if ( !class_exists( $class ) ) {
-					$file = $specialObj->getFile();
-					require_once $file;
-				}
-				$queryPage = new $class;
+				$class = get_class( $specialObj );
+				$this->error( "$class is not an instance of QueryPage.\n", 1 );
+				die;
 			}
 
 			if ( !$this->hasOption( 'only' ) || $this->getOption( 'only' ) == $queryPage->getName() ) {
 				$this->output( sprintf( '%-30s [QueryPage] ', $special ) );
 				if ( $queryPage->isExpensive() ) {
-					$t1 = explode( ' ', microtime() );
+					$t1 = microtime( true );
 					# Do the query
 					$num = $queryPage->recache( $limit === null ? $wgQueryCacheLimit : $limit );
-					$t2 = explode( ' ', microtime() );
+					$t2 = microtime( true );
 					if ( $num === false ) {
 						$this->output( "FAILED: database error\n" );
 					} else {
 						$this->output( "got $num rows in " );
 
-						$elapsed = ( $t2[0] - $t1[0] ) + ( $t2[1] - $t1[1] );
+						$elapsed = $t2 - $t1;
 						$hours = intval( $elapsed / 3600 );
 						$minutes = intval( $elapsed % 3600 / 60 );
 						$seconds = $elapsed - $hours * 3600 - $minutes * 60;
@@ -139,12 +137,12 @@ class UpdateSpecialPages extends Maintenance {
 					continue;
 				}
 				$this->output( sprintf( '%-30s [callback] ', $special ) );
-				$t1 = explode( ' ', microtime() );
+				$t1 = microtime( true );
 				call_user_func( $call, $dbw );
-				$t2 = explode( ' ', microtime() );
+				$t2 = microtime( true );
 
 				$this->output( "completed in " );
-				$elapsed = ( $t2[0] - $t1[0] ) + ( $t2[1] - $t1[1] );
+				$elapsed = $t2 - $t1;
 				$hours = intval( $elapsed / 3600 );
 				$minutes = intval( $elapsed % 3600 / 60 );
 				$seconds = $elapsed - $hours * 3600 - $minutes * 60;

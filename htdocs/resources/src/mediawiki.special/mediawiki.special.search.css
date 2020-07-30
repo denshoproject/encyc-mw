@@ -15,18 +15,25 @@
 	display: inline !ie;
 }
 .searchresults {
+	margin: 1em 0 1em .4em;
 }
-.searchresults p {
-	margin-left: 0.4em;
-	margin-top: 1em;
-	margin-bottom: 1.2em;
+/* needs extra specificity to override `.mw-body p` selector */
+.mw-body p.mw-search-nonefound {
+	margin: 0;
+}
+.mw-search-interwiki-header {
+	font-weight: bold;
+}
+.mw-search-nonefound + .mw-search-interwiki-header {
+	margin-top: 0;
 }
 div.searchresult {
 	font-size: 95%;
 	width: 38em;
 }
 .mw-search-results {
-	margin-left: 0.4em;
+	margin-left: 0;
+	float: left;
 }
 .mw-search-results li {
 	padding-bottom: 1.2em;
@@ -40,34 +47,34 @@ div.searchresult {
 	color: green;
 	font-size: 97%;
 }
-.mw-search-formheader {
+.mw-search-profile-tabs {
 	background-color: #f3f3f3;
 	margin-top: 1em;
 	border: 1px solid silver;
 }
-.mw-search-formheader div.search-types {
+.mw-search-profile-tabs div.search-types {
 	float: left;
 	padding-left: 0.25em;
 }
-.mw-search-formheader div.search-types ul {
-	margin: 0 !important;
-	padding: 0 !important;
-	list-style: none !important;
+.mw-search-profile-tabs div.search-types ul {
+	margin: 0;
+	padding: 0;
+	list-style: none;
 }
-.mw-search-formheader div.search-types ul li {
+.mw-search-profile-tabs div.search-types ul li {
 	float: left;
 	margin: 0;
 	padding: 0;
 }
-.mw-search-formheader div.search-types ul li a {
+.mw-search-profile-tabs div.search-types ul li a {
 	display: block;
 	padding: 0.5em;
 }
-.mw-search-formheader div.search-types ul li.current a {
+.mw-search-profile-tabs div.search-types ul li.current a {
 	color: #333333;
 	cursor: default;
 }
-.mw-search-formheader div.search-types ul li.current a:hover {
+.mw-search-profile-tabs div.search-types ul li.current a:hover {
 	text-decoration: none;
 }
 #mw-search-top-table div.results-info {
@@ -80,11 +87,11 @@ div.searchresult {
 
 fieldset#mw-searchoptions {
 	margin: 0;
-	padding: 0.5em 0.75em 0.75em 0.75em !important;
+	padding: 0.5em 0.75em 0.75em 0.75em;
 	border: none;
 	background-color: #f9f9f9;
-	border: 1px solid silver !important;
-	border-top-width: 0 !important;
+	border: 1px solid silver;
+	border-top-width: 0;
 }
 fieldset#mw-searchoptions legend {
 	display: none;
@@ -106,9 +113,10 @@ fieldset#mw-searchoptions div#mw-search-togglebox input {
 fieldset#mw-searchoptions table {
 	float: left;
 	margin-right: 3em;
+	border-collapse: collapse;
 }
 fieldset#mw-searchoptions table td {
-	padding-right: 1em;
+	padding: 0 1em 0 0;
 	white-space: nowrap;
 }
 fieldset#mw-searchoptions div.divider {

@@ -21,6 +21,8 @@
  * @ingroup Media
  */
 
+use MediaWiki\Logger\LoggerFactory;
+
 /**
  * Class to deal with reconciling and extracting metadata from bitmap images.
  * This is meant to comply with http://www.metadataworkinggroup.org/pdf/mwg_guidance.pdf
@@ -33,19 +35,19 @@
  */
 class BitmapMetadataHandler {
 	/** @var array */
-	private $metadata = array();
+	private $metadata = [];
 
 	/** @var array Metadata priority */
-	private $metaPriority = array(
-		20 => array( 'other' ),
-		40 => array( 'native' ),
-		60 => array( 'iptc-good-hash', 'iptc-no-hash' ),
-		70 => array( 'xmp-deprecated' ),
-		80 => array( 'xmp-general' ),
-		90 => array( 'xmp-exif' ),
-		100 => array( 'iptc-bad-hash' ),
-		120 => array( 'exif' ),
-	);
+	private $metaPriority = [
+		20 => [ 'other' ],
+		40 => [ 'native' ],
+		60 => [ 'iptc-good-hash', 'iptc-no-hash' ],
+		70 => [ 'xmp-deprecated' ],
+		80 => [ 'xmp-general' ],
+		90 => [ 'xmp-exif' ],
+		100 => [ 'iptc-bad-hash' ],
+		120 => [ 'exif' ],
+	];
 
 	/** @var string */
 	private $iptcType = 'iptc-no-hash';
@@ -61,7 +63,7 @@ class BitmapMetadataHandler {
 	private function doApp13( $app13 ) {
 		try {
 			$this->iptcType = JpegMetadataExtractor::doPSIR( $app13 );
-		} catch ( MWException $e ) {
+		} catch ( Exception $e ) {
 			// Error reading the iptc hash information.
 			// This probably means the App13 segment is something other than what we expect.
 			// However, still try to read it, and treat it as if the hash didn't exist.
@@ -121,7 +123,7 @@ class BitmapMetadataHandler {
 	function getMetadataArray() {
 		// this seems a bit ugly... This is all so its merged in right order
 		// based on the MWG recomendation.
-		$temp = array();
+		$temp = [];
 		krsort( $this->metaPriority );
 		foreach ( $this->metaPriority as $pri ) {
 			foreach ( $pri as $type ) {
@@ -154,12 +156,12 @@ class BitmapMetadataHandler {
 	 * @throws MWException On invalid file.
 	 */
 	static function Jpeg( $filename ) {
-		$showXMP = function_exists( 'xml_parser_create_ns' );
+		$showXMP = XMPReader::isSupported();
 		$meta = new self();
 
 		$seg = JpegMetadataExtractor::segmentSplitter( $filename );
 		if ( isset( $seg['COM'] ) && isset( $seg['COM'][0] ) ) {
-			$meta->addMetadata( array( 'JPEGFileComment' => $seg['COM'] ), 'native' );
+			$meta->addMetadata( [ 'JPEGFileComment' => $seg['COM'] ], 'native' );
 		}
 		if ( isset( $seg['PSIR'] ) && count( $seg['PSIR'] ) > 0 ) {
 			foreach ( $seg['PSIR'] as $curPSIRValue ) {
@@ -167,7 +169,7 @@ class BitmapMetadataHandler {
 			}
 		}
 		if ( isset( $seg['XMP'] ) && $showXMP ) {
-			$xmp = new XMPReader();
+			$xmp = new XMPReader( LoggerFactory::getInstance( 'XMP' ) );
 			$xmp->parse( $seg['XMP'] );
 			foreach ( $seg['XMP_ext'] as $xmpExt ) {
 				/* Support for extended xmp in jpeg files
@@ -196,14 +198,14 @@ class BitmapMetadataHandler {
 	 * @return array Array for storage in img_metadata.
 	 */
 	public static function PNG( $filename ) {
-		$showXMP = function_exists( 'xml_parser_create_ns' );
+		$showXMP = XMPReader::isSupported();
 
 		$meta = new self();
 		$array = PNGMetadataExtractor::getMetadata( $filename );
 		if ( isset( $array['text']['xmp']['x-default'] )
 			&& $array['text']['xmp']['x-default'] !== '' && $showXMP
 		) {
-			$xmp = new XMPReader();
+			$xmp = new XMPReader( LoggerFactory::getInstance( 'XMP' ) );
 			$xmp->parse( $array['text']['xmp']['x-default'] );
 			$xmpRes = $xmp->getResults();
 			foreach ( $xmpRes as $type => $xmpSection ) {
@@ -233,11 +235,11 @@ class BitmapMetadataHandler {
 		$baseArray = GIFMetadataExtractor::getMetadata( $filename );
 
 		if ( count( $baseArray['comment'] ) > 0 ) {
-			$meta->addMetadata( array( 'GIFFileComment' => $baseArray['comment'] ), 'native' );
+			$meta->addMetadata( [ 'GIFFileComment' => $baseArray['comment'] ], 'native' );
 		}
 
-		if ( $baseArray['xmp'] !== '' && function_exists( 'xml_parser_create_ns' ) ) {
-			$xmp = new XMPReader();
+		if ( $baseArray['xmp'] !== '' && XMPReader::isSupported() ) {
+			$xmp = new XMPReader( LoggerFactory::getInstance( 'XMP' ) );
 			$xmp->parse( $baseArray['xmp'] );
 			$xmpRes = $xmp->getResults();
 			foreach ( $xmpRes as $type => $xmpSection ) {

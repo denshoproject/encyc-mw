@@ -1,7 +1,5 @@
 <?php
 /**
- * Request-dependant objects containers.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -17,19 +15,20 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  * http://www.gnu.org/copyleft/gpl.html
  *
- * @since 1.19
- *
  * @author Daniel Friesen
  * @file
  */
+use Liuggio\StatsdClient\Factory\StatsdDataFactory;
+use MediaWiki\MediaWikiServices;
 
 /**
  * An IContextSource implementation which will inherit context from another source
  * but allow individual pieces of context to be changed locally
  * eg: A ContextSource that can inherit from the main RequestContext but have
  *     a different Title instance set on it.
+ * @since 1.19
  */
-class DerivativeContext extends ContextSource {
+class DerivativeContext extends ContextSource implements MutableContext {
 	/**
 	 * @var WebRequest
 	 */
@@ -71,6 +70,11 @@ class DerivativeContext extends ContextSource {
 	private $config;
 
 	/**
+	 * @var Timing
+	 */
+	private $timing;
+
+	/**
 	 * Constructor
 	 * @param IContextSource $context Context to inherit from
 	 */
@@ -97,6 +101,30 @@ class DerivativeContext extends ContextSource {
 			return $this->config;
 		} else {
 			return $this->getContext()->getConfig();
+		}
+	}
+
+	/**
+	 * Get the stats object
+	 *
+	 * @deprecated since 1.27 use a StatsdDataFactory from MediaWikiServices (preferably injected)
+	 *
+	 * @return StatsdDataFactory
+	 */
+	public function getStats() {
+		return MediaWikiServices::getInstance()->getStatsdDataFactory();
+	}
+
+	/**
+	 * Get the timing object
+	 *
+	 * @return Timing
+	 */
+	public function getTiming() {
+		if ( !is_null( $this->timing ) ) {
+			return $this->timing;
+		} else {
+			return $this->getContext()->getTiming();
 		}
 	}
 

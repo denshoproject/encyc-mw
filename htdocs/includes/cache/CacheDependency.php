@@ -38,11 +38,11 @@ class DependencyWrapper {
 	 * @param CacheDependency|CacheDependency[] $deps A dependency or dependency
 	 *   array. All dependencies must be objects implementing CacheDependency.
 	 */
-	function __construct( $value = false, $deps = array() ) {
+	function __construct( $value = false, $deps = [] ) {
 		$this->value = $value;
 
 		if ( !is_array( $deps ) ) {
-			$deps = array( $deps );
+			$deps = [ $deps ];
 		}
 
 		$this->deps = $deps;
@@ -98,7 +98,7 @@ class DependencyWrapper {
 	 * it will be generated with the callback function (if present), and the newly
 	 * calculated value will be stored to the cache in a wrapper.
 	 *
-	 * @param BagOStuff $cache A cache object such as $wgMemc
+	 * @param BagOStuff $cache A cache object
 	 * @param string $key The cache key
 	 * @param int $expiry The expiry timestamp or interval in seconds
 	 * @param bool|callable $callback The callback for generating the value, or false
@@ -111,7 +111,7 @@ class DependencyWrapper {
 	 *    callback was defined.
 	 */
 	static function getValueFromCache( $cache, $key, $expiry = 0, $callback = false,
-		$callbackParams = array(), $deps = array()
+		$callbackParams = [], $deps = []
 	) {
 		$obj = $cache->get( $key );
 
@@ -176,18 +176,16 @@ class FileDependency extends CacheDependency {
 	function __sleep() {
 		$this->loadDependencyValues();
 
-		return array( 'filename', 'timestamp' );
+		return [ 'filename', 'timestamp' ];
 	}
 
 	function loadDependencyValues() {
 		if ( is_null( $this->timestamp ) ) {
-			if ( !file_exists( $this->filename ) ) {
-				# Dependency on a non-existent file
-				# This is a valid concept!
-				$this->timestamp = false;
-			} else {
-				$this->timestamp = filemtime( $this->filename );
-			}
+			MediaWiki\suppressWarnings();
+			# Dependency on a non-existent file stores "false"
+			# This is a valid concept!
+			$this->timestamp = filemtime( $this->filename );
+			MediaWiki\restoreWarnings();
 		}
 	}
 
@@ -195,7 +193,10 @@ class FileDependency extends CacheDependency {
 	 * @return bool
 	 */
 	function isExpired() {
-		if ( !file_exists( $this->filename ) ) {
+		MediaWiki\suppressWarnings();
+		$lastmod = filemtime( $this->filename );
+		MediaWiki\restoreWarnings();
+		if ( $lastmod === false ) {
 			if ( $this->timestamp === false ) {
 				# Still nonexistent
 				return false;
@@ -206,7 +207,6 @@ class FileDependency extends CacheDependency {
 				return true;
 			}
 		} else {
-			$lastmod = filemtime( $this->filename );
 			if ( $lastmod > $this->timestamp ) {
 				# Modified or created
 				wfDebug( "Dependency triggered: {$this->filename} changed.\n" );

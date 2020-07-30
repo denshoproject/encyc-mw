@@ -84,11 +84,14 @@ class CategoryViewer extends ContextSource {
 	 * @param array $until An array with 3 keys for until of each section (since 1.17)
 	 * @param array $query
 	 */
-	function __construct( $title, IContextSource $context, $from = array(),
-		$until = array(), $query = array()
+	function __construct( $title, IContextSource $context, $from = [],
+		$until = [], $query = []
 	) {
 		$this->title = $title;
 		$this->setContext( $context );
+		$this->getOutput()->addModuleStyles( [
+			'mediawiki.action.view.categoryPage.styles'
+		] );
 		$this->from = $from;
 		$this->until = $until;
 		$this->limit = $context->getConfig()->get( 'CategoryPagingLimit' );
@@ -104,7 +107,6 @@ class CategoryViewer extends ContextSource {
 	 * @return string HTML output
 	 */
 	public function getHTML() {
-		wfProfileIn( __METHOD__ );
 
 		$this->showGallery = $this->getConfig()->get( 'CategoryMagicGallery' )
 			&& !$this->getOutput()->mNoGallery;
@@ -136,33 +138,36 @@ class CategoryViewer extends ContextSource {
 		}
 
 		$lang = $this->getLanguage();
-		$langAttribs = array( 'lang' => $lang->getCode(), 'dir' => $lang->getDir() );
+		$attribs = [
+			'class' => 'mw-category-generated',
+			'lang' => $lang->getHtmlCode(),
+			'dir' => $lang->getDir()
+		];
 		# put a div around the headings which are in the user language
-		$r = Html::openElement( 'div', $langAttribs ) . $r . '</div>';
+		$r = Html::openElement( 'div', $attribs ) . $r . '</div>';
 
-		wfProfileOut( __METHOD__ );
 		return $r;
 	}
 
 	function clearCategoryState() {
-		$this->articles = array();
-		$this->articles_start_char = array();
-		$this->children = array();
-		$this->children_start_char = array();
+		$this->articles = [];
+		$this->articles_start_char = [];
+		$this->children = [];
+		$this->children_start_char = [];
 		if ( $this->showGallery ) {
 			// Note that null for mode is taken to mean use default.
 			$mode = $this->getRequest()->getVal( 'gallerymode', null );
 			try {
 				$this->gallery = ImageGalleryBase::factory( $mode, $this->getContext() );
-			} catch ( MWException $e ) {
+			} catch ( Exception $e ) {
 				// User specified something invalid, fallback to default.
 				$this->gallery = ImageGalleryBase::factory( false, $this->getContext() );
 			}
 
 			$this->gallery->setHideBadImages();
 		} else {
-			$this->imgsNoGallery = array();
-			$this->imgsNoGallery_start_char = array();
+			$this->imgsNoGallery = [];
+			$this->imgsNoGallery_start_char = [];
 		}
 	}
 
@@ -176,17 +181,28 @@ class CategoryViewer extends ContextSource {
 		// Subcategory; strip the 'Category' namespace from the link text.
 		$title = $cat->getTitle();
 
-		$link = Linker::link( $title, htmlspecialchars( $title->getText() ) );
-		if ( $title->isRedirect() ) {
-			// This didn't used to add redirect-in-category, but might
-			// as well be consistent with the rest of the sections
-			// on a category page.
-			$link = '<span class="redirect-in-category">' . $link . '</span>';
-		}
-		$this->children[] = $link;
+		$this->children[] = $this->generateLink(
+			'subcat',
+			$title,
+			$title->isRedirect(),
+			htmlspecialchars( $title->getText() )
+		);
 
 		$this->children_start_char[] =
 			$this->getSubcategorySortChar( $cat->getTitle(), $sortkey );
+	}
+
+	function generateLink( $type, Title $title, $isRedirect, $html = null ) {
+		$link = null;
+		Hooks::run( 'CategoryViewer::generateLink', [ $type, $title, $html, &$link ] );
+		if ( $link === null ) {
+			$link = Linker::link( $title, $html );
+		}
+		if ( $isRedirect ) {
+			$link = '<span class="redirect-in-category">' . $link . '</span>';
+		}
+
+		return $link;
 	}
 
 	/**
@@ -231,13 +247,7 @@ class CategoryViewer extends ContextSource {
 				$this->gallery->add( $title );
 			}
 		} else {
-			$link = Linker::link( $title );
-			if ( $isRedirect ) {
-				// This seems kind of pointless given 'mw-redirect' class,
-				// but keeping for back-compatibility with user css.
-				$link = '<span class="redirect-in-category">' . $link . '</span>';
-			}
-			$this->imgsNoGallery[] = $link;
+			$this->imgsNoGallery[] = $this->generateLink( 'image', $title, $isRedirect );
 
 			$this->imgsNoGallery_start_char[] = $wgContLang->convert(
 				$this->collation->getFirstLetter( $sortkey ) );
@@ -254,13 +264,7 @@ class CategoryViewer extends ContextSource {
 	function addPage( $title, $sortkey, $pageLength, $isRedirect = false ) {
 		global $wgContLang;
 
-		$link = Linker::link( $title );
-		if ( $isRedirect ) {
-			// This seems kind of pointless given 'mw-redirect' class,
-			// but keeping for back-compatibility with user css.
-			$link = '<span class="redirect-in-category">' . $link . '</span>';
-		}
-		$this->articles[] = $link;
+		$this->articles[] = $this->generateLink( 'page', $title, $isRedirect );
 
 		$this->articles_start_char[] = $wgContLang->convert(
 			$this->collation->getFirstLetter( $sortkey ) );
@@ -284,24 +288,24 @@ class CategoryViewer extends ContextSource {
 	function doCategoryQuery() {
 		$dbr = wfGetDB( DB_SLAVE, 'category' );
 
-		$this->nextPage = array(
+		$this->nextPage = [
 			'page' => null,
 			'subcat' => null,
 			'file' => null,
-		);
-		$this->prevPage = array(
+		];
+		$this->prevPage = [
 			'page' => null,
 			'subcat' => null,
 			'file' => null,
-		);
+		];
 
-		$this->flip = array( 'page' => false, 'subcat' => false, 'file' => false );
+		$this->flip = [ 'page' => false, 'subcat' => false, 'file' => false ];
 
-		foreach ( array( 'page', 'subcat', 'file' ) as $type ) {
+		foreach ( [ 'page', 'subcat', 'file' ] as $type ) {
 			# Get the sortkeys for start/end, if applicable.  Note that if
 			# the collation in the database differs from the one
 			# set in $wgCategoryCollation, pagination might go totally haywire.
-			$extraConds = array( 'cl_type' => $type );
+			$extraConds = [ 'cl_type' => $type ];
 			if ( isset( $this->from[$type] ) && $this->from[$type] !== null ) {
 				$extraConds[] = 'cl_sortkey >= '
 					. $dbr->addQuotes( $this->collation->getSortKey( $this->from[$type] ) );
@@ -312,26 +316,28 @@ class CategoryViewer extends ContextSource {
 			}
 
 			$res = $dbr->select(
-				array( 'page', 'categorylinks', 'category' ),
-				array( 'page_id', 'page_title', 'page_namespace', 'page_len',
+				[ 'page', 'categorylinks', 'category' ],
+				[ 'page_id', 'page_title', 'page_namespace', 'page_len',
 					'page_is_redirect', 'cl_sortkey', 'cat_id', 'cat_title',
 					'cat_subcats', 'cat_pages', 'cat_files',
-					'cl_sortkey_prefix', 'cl_collation' ),
-				array_merge( array( 'cl_to' => $this->title->getDBkey() ), $extraConds ),
+					'cl_sortkey_prefix', 'cl_collation' ],
+				array_merge( [ 'cl_to' => $this->title->getDBkey() ], $extraConds ),
 				__METHOD__,
-				array(
-					'USE INDEX' => array( 'categorylinks' => 'cl_sortkey' ),
+				[
+					'USE INDEX' => [ 'categorylinks' => 'cl_sortkey' ],
 					'LIMIT' => $this->limit + 1,
 					'ORDER BY' => $this->flip[$type] ? 'cl_sortkey DESC' : 'cl_sortkey',
-				),
-				array(
-					'categorylinks' => array( 'INNER JOIN', 'cl_from = page_id' ),
-					'category' => array( 'LEFT JOIN', array(
+				],
+				[
+					'categorylinks' => [ 'INNER JOIN', 'cl_from = page_id' ],
+					'category' => [ 'LEFT JOIN', [
 						'cat_title = page_title',
 						'page_namespace' => NS_CATEGORY
-					))
-				)
+					] ]
+				]
 			);
+
+			Hooks::run( 'CategoryViewer::doCategoryQuery', [ $type, $res ] );
 
 			$count = 0;
 			foreach ( $res as $row ) {
@@ -385,12 +391,13 @@ class CategoryViewer extends ContextSource {
 		$r = '';
 		$rescnt = count( $this->children );
 		$dbcnt = $this->cat->getSubcatCount();
+		// This function should be called even if the result isn't used, it has side-effects
 		$countmsg = $this->getCountMessage( $rescnt, $dbcnt, 'subcat' );
 
 		if ( $rescnt > 0 ) {
 			# Showing subcategories
 			$r .= "<div id=\"mw-subcategories\">\n";
-			$r .= '<h2>' . $this->msg( 'subcategories' )->text() . "</h2>\n";
+			$r .= '<h2>' . $this->msg( 'subcategories' )->parse() . "</h2>\n";
 			$r .= $countmsg;
 			$r .= $this->getSectionPagingLinks( 'subcat' );
 			$r .= $this->formatList( $this->children, $this->children_start_char );
@@ -415,11 +422,12 @@ class CategoryViewer extends ContextSource {
 		$dbcnt = $this->cat->getPageCount() - $this->cat->getSubcatCount()
 			- $this->cat->getFileCount();
 		$rescnt = count( $this->articles );
+		// This function should be called even if the result isn't used, it has side-effects
 		$countmsg = $this->getCountMessage( $rescnt, $dbcnt, 'article' );
 
 		if ( $rescnt > 0 ) {
 			$r = "<div id=\"mw-pages\">\n";
-			$r .= '<h2>' . $this->msg( 'category_header', $ti )->text() . "</h2>\n";
+			$r .= '<h2>' . $this->msg( 'category_header', $ti )->parse() . "</h2>\n";
 			$r .= $countmsg;
 			$r .= $this->getSectionPagingLinks( 'page' );
 			$r .= $this->formatList( $this->articles, $this->articles_start_char );
@@ -435,10 +443,11 @@ class CategoryViewer extends ContextSource {
 	function getImageSection() {
 		$r = '';
 		$rescnt = $this->showGallery ? $this->gallery->count() : count( $this->imgsNoGallery );
-		if ( $rescnt > 0 ) {
-			$dbcnt = $this->cat->getFileCount();
-			$countmsg = $this->getCountMessage( $rescnt, $dbcnt, 'file' );
+		$dbcnt = $this->cat->getFileCount();
+		// This function should be called even if the result isn't used, it has side-effects
+		$countmsg = $this->getCountMessage( $rescnt, $dbcnt, 'file' );
 
+		if ( $rescnt > 0 ) {
 			$r .= "<div id=\"mw-category-media\">\n";
 			$r .= '<h2>' .
 				$this->msg(
@@ -515,8 +524,8 @@ class CategoryViewer extends ContextSource {
 		}
 
 		$pageLang = $this->title->getPageLanguage();
-		$attribs = array( 'lang' => $pageLang->getCode(), 'dir' => $pageLang->getDir(),
-			'class' => 'mw-content-' . $pageLang->getDir() );
+		$attribs = [ 'lang' => $pageLang->getHtmlCode(), 'dir' => $pageLang->getDir(),
+			'class' => 'mw-content-' . $pageLang->getDir() ];
 		$list = Html::rawElement( 'div', $attribs, $list );
 
 		return $list;
@@ -529,8 +538,7 @@ class CategoryViewer extends ContextSource {
 	 * TODO: Take the headers into account when creating columns, so they're
 	 * more visually equal.
 	 *
-	 * More distant TODO: Scrap this and use CSS columns, whenever IE finally
-	 * supports those.
+	 * TODO: shortList and columnList are similar, need merging
 	 *
 	 * @param array $articles
 	 * @param string[] $articles_start_char
@@ -539,50 +547,34 @@ class CategoryViewer extends ContextSource {
 	 */
 	static function columnList( $articles, $articles_start_char ) {
 		$columns = array_combine( $articles, $articles_start_char );
-		# Split into three columns
-		$columns = array_chunk( $columns, ceil( count( $columns ) / 3 ), true /* preserve keys */ );
 
-		$ret = '<table style="width: 100%;"><tr style="vertical-align: top;">';
-		$prevchar = null;
+		$ret = Html::openElement( 'div', [ 'class' => 'mw-category' ] );
 
-		foreach ( $columns as $column ) {
-			$ret .= '<td style="width: 33.3%;">';
-			$colContents = array();
+		$colContents = [];
 
-			# Kind of like array_flip() here, but we keep duplicates in an
-			# array instead of dropping them.
-			foreach ( $column as $article => $char ) {
-				if ( !isset( $colContents[$char] ) ) {
-					$colContents[$char] = array();
-				}
-				$colContents[$char][] = $article;
+		# Kind of like array_flip() here, but we keep duplicates in an
+		# array instead of dropping them.
+		foreach ( $columns as $article => $char ) {
+			if ( !isset( $colContents[$char] ) ) {
+				$colContents[$char] = [];
 			}
-
-			$first = true;
-			foreach ( $colContents as $char => $articles ) {
-				# Change space to non-breaking space to keep headers aligned
-				$h3char = $char === ' ' ? '&#160;' : htmlspecialchars( $char );
-
-				$ret .= '<h3>' . $h3char;
-				if ( $first && $char === $prevchar ) {
-					# We're continuing a previous chunk at the top of a new
-					# column, so add " cont." after the letter.
-					$ret .= ' ' . wfMessage( 'listingcontinuesabbrev' )->escaped();
-				}
-				$ret .= "</h3>\n";
-
-				$ret .= '<ul><li>';
-				$ret .= implode( "</li>\n<li>", $articles );
-				$ret .= '</li></ul>';
-
-				$first = false;
-				$prevchar = $char;
-			}
-
-			$ret .= "</td>\n";
+			$colContents[$char][] = $article;
 		}
 
-		$ret .= '</tr></table>';
+		foreach ( $colContents as $char => $articles ) {
+			# Change space to non-breaking space to keep headers aligned
+			$h3char = $char === ' ' ? '&#160;' : htmlspecialchars( $char );
+
+			$ret .= '<div class="mw-category-group"><h3>' . $h3char;
+			$ret .= "</h3>\n";
+
+			$ret .= '<ul><li>';
+			$ret .= implode( "</li>\n<li>", $articles );
+			$ret .= '</li></ul></div>';
+
+		}
+
+		$ret .= Html::closeElement( 'div' );
 		return $ret;
 	}
 
@@ -618,7 +610,7 @@ class CategoryViewer extends ContextSource {
 	 * @return string HTML
 	 */
 	private function pagingLinks( $first, $last, $type = '' ) {
-		$prevLink = $this->msg( 'prevn' )->numParams( $this->limit )->escaped();
+		$prevLink = $this->msg( 'prev-page' )->text();
 
 		if ( $first != '' ) {
 			$prevQuery = $this->query;
@@ -627,12 +619,12 @@ class CategoryViewer extends ContextSource {
 			$prevLink = Linker::linkKnown(
 				$this->addFragmentToTitle( $this->title, $type ),
 				$prevLink,
-				array(),
+				[],
 				$prevQuery
 			);
 		}
 
-		$nextLink = $this->msg( 'nextn' )->numParams( $this->limit )->escaped();
+		$nextLink = $this->msg( 'next-page' )->text();
 
 		if ( $last != '' ) {
 			$lastQuery = $this->query;
@@ -641,7 +633,7 @@ class CategoryViewer extends ContextSource {
 			$nextLink = Linker::linkKnown(
 				$this->addFragmentToTitle( $this->title, $type ),
 				$nextLink,
-				array(),
+				[],
 				$lastQuery
 			);
 		}
@@ -728,7 +720,7 @@ class CategoryViewer extends ContextSource {
 			// quick due to the small number of entries.
 			$totalcnt = $rescnt;
 			$category = $this->cat;
-			wfGetDB( DB_MASTER )->onTransactionIdle( function () use ( $category ) {
+			DeferredUpdates::addCallableUpdate( function () use ( $category ) {
 				$category->refreshCounts();
 			} );
 		} else {

@@ -36,6 +36,12 @@ abstract class FormSpecialPage extends SpecialPage {
 	protected $par = null;
 
 	/**
+	 * @var array|null POST data preserved across re-authentication
+	 * @since 1.32
+	 */
+	protected $reauthPostData = null;
+
+	/**
 	 * Get an HTMLForm descriptor array
 	 * @return array
 	 */
@@ -75,19 +81,48 @@ abstract class FormSpecialPage extends SpecialPage {
 	}
 
 	/**
+	 * Get display format for the form. See HTMLForm documentation for available values.
+	 *
+	 * @since 1.25
+	 * @return string
+	 */
+	protected function getDisplayFormat() {
+		return 'table';
+	}
+
+	/**
 	 * Get the HTMLForm to control behavior
 	 * @return HTMLForm|null
 	 */
 	protected function getForm() {
-		$this->fields = $this->getFormFields();
+		$context = $this->getContext();
+		$onSubmit = [ $this, 'onSubmit' ];
 
-		$form = new HTMLForm( $this->fields, $this->getContext(), $this->getMessagePrefix() );
-		$form->setSubmitCallback( array( $this, 'onSubmit' ) );
-		// If the form is a compact vertical form, then don't output this ugly
-		// fieldset surrounding it.
-		// XXX Special pages can setDisplayFormat to 'vform' in alterForm(), but that
-		// is called after this.
-		if ( !$form->isVForm() ) {
+		if ( $this->reauthPostData ) {
+			// Restore POST data
+			$context = new DerivativeContext( $context );
+			$oldRequest = $this->getRequest();
+			$context->setRequest( new DerivativeRequest(
+				$oldRequest, $this->reauthPostData + $oldRequest->getQueryValues(), true
+			) );
+
+			// But don't treat it as a "real" submission just in case of some
+			// crazy kind of CSRF.
+			$onSubmit = function () {
+				return false;
+			};
+		}
+
+		$form = HTMLForm::factory(
+			$this->getDisplayFormat(),
+			$this->getFormFields(),
+			$context,
+			$this->getMessagePrefix()
+		);
+		$form->setSubmitCallback( $onSubmit );
+		if ( $this->getDisplayFormat() !== 'ooui' ) {
+			// No legend and wrapper by default in OOUI forms, but can be set manually
+			// from alterForm()
 			$form->setWrapperLegendMsg( $this->getMessagePrefix() . '-legend' );
 		}
 
@@ -98,7 +133,7 @@ abstract class FormSpecialPage extends SpecialPage {
 
 		// Retain query parameters (uselang etc)
 		$params = array_diff_key(
-			$this->getRequest()->getQueryValues(), array( 'title' => null ) );
+			$this->getRequest()->getQueryValues(), [ 'title' => null ] );
 		$form->addHiddenField( 'redirectparams', wfArrayToCgi( $params ) );
 
 		$form->addPreText( $this->preText() );
@@ -106,7 +141,7 @@ abstract class FormSpecialPage extends SpecialPage {
 		$this->alterForm( $form );
 
 		// Give hooks a chance to alter the form, adding extra fields or text etc
-		wfRunHooks( 'SpecialPageBeforeFormDisplay', array( $this->getName(), &$form ) );
+		Hooks::run( 'SpecialPageBeforeFormDisplay', [ $this->getName(), &$form ] );
 
 		return $form;
 	}
@@ -139,6 +174,11 @@ abstract class FormSpecialPage extends SpecialPage {
 		// This will throw exceptions if there's a problem
 		$this->checkExecutePermissions( $this->getUser() );
 
+		$securityLevel = $this->getLoginSecurityLevel();
+		if ( $securityLevel !== false && !$this->checkLoginSecurityLevel( $securityLevel ) ) {
+			return;
+		}
+
 		$form = $this->getForm();
 		if ( $form->show() ) {
 			$this->onSuccess();
@@ -158,7 +198,6 @@ abstract class FormSpecialPage extends SpecialPage {
 	 * Failures here must throw subclasses of ErrorPageError.
 	 * @param User $user
 	 * @throws UserBlockedError
-	 * @return bool True
 	 */
 	protected function checkExecutePermissions( User $user ) {
 		$this->checkPermissions();
@@ -171,8 +210,6 @@ abstract class FormSpecialPage extends SpecialPage {
 		if ( $this->requiresWrite() ) {
 			$this->checkReadOnly();
 		}
-
-		return true;
 	}
 
 	/**
@@ -189,5 +226,15 @@ abstract class FormSpecialPage extends SpecialPage {
 	 */
 	public function requiresUnblock() {
 		return true;
+	}
+
+	/**
+	 * Preserve POST data across reauthentication
+	 *
+	 * @since 1.32
+	 * @param array $data
+	 */
+	protected function setReauthPostData( array $data ) {
+		$this->reauthPostData = $data;
 	}
 }

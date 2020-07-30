@@ -50,17 +50,20 @@ body {
 	}
 
 	h1,
-	h2,
-	#firstHeading {
+	h2 {
 		font-family: @content-heading-font-family;
 		line-height: @heading-line-height;
 		margin-bottom: 0.25em;
 		padding: 0;
 	}
 
-	h1,
-	#firstHeading {
+	h1 {
 		font-size: @content-heading-font-size;
+	}
+	.mw-body-content {
+		h1 {
+			margin-top: 1em;
+		}
 	}
 
 	h2 {
@@ -79,7 +82,7 @@ body {
 	}
 
 	h3 {
-		font-size: 1.17em;
+		font-size: 1.2em;
 	}
 
 	h3,
@@ -98,19 +101,40 @@ body {
 		font-size: 100%; /* (reset) */
 		font-family: @content-font-family;
 	}
+
+	.firstHeading {
+		/* Change the default from mediawiki.skinning CSS to let indicators float into heading area */
+		overflow: visible;
+	}
+
+	.mw-indicators {
+		float: right;
+		line-height: @content-line-height;
+		font-size: @content-font-size;
+		/* Ensure that this is displayed on top of .mw-body-content and clickable */
+		position: relative;
+		z-index: 1;
+	}
+
+	.mw-indicator {
+		display: inline-block;
+		zoom: 1;
+		*display: inline;
+	}
 }
 
 /* Hide empty portlets */
 div.emptyPortlet {
-		display: none;
+	display: none;
 }
 
 ul {
 	list-style-type: disc;
-	.list-style-image('images/bullet-icon.png');
+	.list-style-image-svg('images/bullet-icon.svg', 'images/bullet-icon.png');
 }
 
-pre, .mw-code {
+pre,
+.mw-code {
 	line-height: 1.3em;
 }
 
@@ -123,12 +147,13 @@ pre, .mw-code {
 	font-size: 140%;
 }
 
-.redirectMsg img {
-	vertical-align: text-bottom;
+.redirectMsg p {
+	margin: 0;
 }
 
 .mw-body-content {
 	position: relative;
 	line-height: @content-line-height;
 	font-size: @content-font-size;
+	z-index: 0;
 }

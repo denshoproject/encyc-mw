@@ -12,6 +12,7 @@ $specialPageAliases = array();
 /** English (English) */
 $specialPageAliases['en'] = array(
 	'Gadgets' => array( 'Gadgets' ),
+	'GadgetUsage' => array( 'GadgetUsage' ),
 );
 
 /** Afrikaans (Afrikaans) */
@@ -24,7 +25,7 @@ $specialPageAliases['ar'] = array(
 	'Gadgets' => array( 'إضافات' ),
 );
 
-/** Egyptian Spoken Arabic (مصرى) */
+/** Egyptian Arabic (مصرى) */
 $specialPageAliases['arz'] = array(
 	'Gadgets' => array( 'ادوات' ),
 );
@@ -34,9 +35,19 @@ $specialPageAliases['as'] = array(
 	'Gadgets' => array( 'গেজেটসমূহ' ),
 );
 
+/** Avaric (авар) */
+$specialPageAliases['av'] = array(
+	'Gadgets' => array( 'Гаджеты' ),
+);
+
 /** Bulgarian (български) */
 $specialPageAliases['bg'] = array(
 	'Gadgets' => array( 'Джаджи' ),
+);
+
+/** Western Balochi (بلوچی رخشانی) */
+$specialPageAliases['bgn'] = array(
+	'Gadgets' => array( 'وسایل_ئان' ),
 );
 
 /** Banjar (Bahasa Banjar) */
@@ -59,7 +70,7 @@ $specialPageAliases['ce'] = array(
 	'Gadgets' => array( 'Гаджеташ' ),
 );
 
-/** Sorani Kurdish (کوردی) */
+/** Central Kurdish (کوردیی ناوەندی) */
 $specialPageAliases['ckb'] = array(
 	'Gadgets' => array( 'ئامرازەکان' ),
 );
@@ -119,7 +130,7 @@ $specialPageAliases['fi'] = array(
 	'Gadgets' => array( 'Pienoisohjelmat' ),
 );
 
-/** Franco-Provençal (arpetan) */
+/** Arpitan (arpetan) */
 $specialPageAliases['frp'] = array(
 	'Gadgets' => array( 'Outils' ),
 );
@@ -202,6 +213,11 @@ $specialPageAliases['lad'] = array(
 /** Luxembourgish (Lëtzebuergesch) */
 $specialPageAliases['lb'] = array(
 	'Gadgets' => array( 'Gadgeten' ),
+);
+
+/** Northern Luri (لۊری شومالی) */
+$specialPageAliases['lrc'] = array(
+	'Gadgets' => array( 'گأجئتیا' ),
 );
 
 /** Minangkabau (Baso Minangkabau) */
@@ -339,7 +355,7 @@ $specialPageAliases['uk'] = array(
 	'Gadgets' => array( 'Додатки' ),
 );
 
-/** vèneto (vèneto) */
+/** Venetian (vèneto) */
 $specialPageAliases['vec'] = array(
 	'Gadgets' => array( 'Strumenti' ),
 );
@@ -347,6 +363,11 @@ $specialPageAliases['vec'] = array(
 /** Vietnamese (Tiếng Việt) */
 $specialPageAliases['vi'] = array(
 	'Gadgets' => array( 'Tiện_ích', 'Công_cụ_đa_năng' ),
+);
+
+/** Chinese (中文) */
+$specialPageAliases['zh'] = array(
+	'Gadgets' => array( '小工具' ),
 );
 
 /** Simplified Chinese (中文（简体）‎) */

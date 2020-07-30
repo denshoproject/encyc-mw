@@ -51,8 +51,9 @@ class MergeMessageFileList extends Maintenance {
 		);
 		$this->addOption( 'extensions-dir', 'Path where extensions can be found.', false, true );
 		$this->addOption( 'output', 'Send output to this file (omit for stdout)', false, true );
-		$this->mDescription = 'Merge $wgExtensionMessagesFiles and $wgMessagesDirs from ' .
-			' various extensions to produce a single file listing all message files and dirs.';
+		$this->addDescription( 'Merge $wgExtensionMessagesFiles and $wgMessagesDirs from ' .
+			' various extensions to produce a single file listing all message files and dirs.'
+		);
 	}
 
 	public function execute() {
@@ -69,7 +70,7 @@ class MergeMessageFileList extends Maintenance {
 				"\$wgExtensionEntryPointListFiles is not set", 1 );
 		}
 
-		$mmfl = array( 'setupFiles' => array() );
+		$mmfl = [ 'setupFiles' => [] ];
 
 		# Add setup files contained in file passed to --list-file
 		if ( $this->hasOption( 'list-file' ) ) {
@@ -80,17 +81,34 @@ class MergeMessageFileList extends Maintenance {
 		# Now find out files in a directory
 		if ( $this->hasOption( 'extensions-dir' ) ) {
 			$extdir = $this->getOption( 'extensions-dir' );
-			$entries = scandir( $extdir );
+			# Allow multiple directories to be passed with ":" as delimiter
+			$extdirs = explode( ':', $extdir );
+			$entries = [];
+			foreach ( $extdirs as $extdir ) {
+				$entries = array_merge( $entries, scandir( $extdir ) );
+			}
 			foreach ( $entries as $extname ) {
 				if ( $extname == '.' || $extname == '..' || !is_dir( "$extdir/$extname" ) ) {
 					continue;
 				}
-				$extfile = "{$extdir}/{$extname}/{$extname}.php";
-				if ( file_exists( $extfile ) ) {
-					$mmfl['setupFiles'][] = $extfile;
-				} else {
+				$possibilities = [
+					"$extdir/$extname/extension.json",
+					"$extdir/$extname/skin.json",
+					"$extdir/$extname/$extname.php"
+				];
+				$found = false;
+				foreach ( $possibilities as $extfile ) {
+					if ( file_exists( $extfile ) ) {
+						$mmfl['setupFiles'][] = $extfile;
+						$found = true;
+						break;
+					}
+				}
+
+				if ( !$found ) {
 					$this->hasError = true;
-					$this->error( "Extension {$extname} in {$extdir} lacks expected {$extname}.php" );
+					$this->error( "Extension {$extname} in {$extdir} lacks expected entry point: " .
+						"extension.json, skin.json, or {$extname}.php." );
 				}
 			}
 		}
@@ -120,7 +138,7 @@ class MergeMessageFileList extends Maintenance {
 	private function readFile( $fileName ) {
 		global $IP;
 
-		$files = array();
+		$files = [];
 		$fileLines = file( $fileName );
 		if ( $fileLines === false ) {
 			$this->hasError = true;
@@ -150,6 +168,7 @@ class MergeMessageFileList extends Maintenance {
 
 require_once RUN_MAINTENANCE_IF_MAIN;
 
+$queue = [];
 foreach ( $mmfl['setupFiles'] as $fileName ) {
 	if ( strval( $fileName ) === '' ) {
 		continue;
@@ -157,12 +176,24 @@ foreach ( $mmfl['setupFiles'] as $fileName ) {
 	if ( empty( $mmfl['quiet'] ) ) {
 		fwrite( STDERR, "Loading data from $fileName\n" );
 	}
-	// Include the extension to update $wgExtensionMessagesFiles
-	if ( !( include_once $fileName ) ) {
-		fwrite( STDERR, "Unable to read $fileName\n" );
-		exit( 1 );
+	// Using extension.json or skin.json
+	if ( substr( $fileName, -strlen( '.json' ) ) === '.json' ) {
+		$queue[$fileName] = 1;
+	} else {
+		require_once $fileName;
 	}
 }
+
+if ( $queue ) {
+	$registry = new ExtensionRegistry();
+	$data = $registry->readFromQueue( $queue );
+	foreach ( [ 'wgExtensionMessagesFiles', 'wgMessagesDirs' ] as $var ) {
+		if ( isset( $data['globals'][$var] ) ) {
+			$GLOBALS[$var] = array_merge( $data['globals'][$var], $GLOBALS[$var] );
+		}
+	}
+}
+
 fwrite( STDERR, "\n" );
 $s =
 	"<" . "?php\n" .
@@ -171,11 +202,11 @@ $s =
 	'$wgExtensionMessagesFiles = ' . var_export( $wgExtensionMessagesFiles, true ) . ";\n\n" .
 	'$wgMessagesDirs = ' . var_export( $wgMessagesDirs, true ) . ";\n\n";
 
-$dirs = array(
+$dirs = [
 	$IP,
 	dirname( __DIR__ ),
 	realpath( $IP )
-);
+];
 
 foreach ( $dirs as $dir ) {
 	$s = preg_replace( "/'" . preg_quote( $dir, '/' ) . "([^']*)'/", '"$IP\1"', $s );

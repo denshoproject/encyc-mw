@@ -42,7 +42,7 @@ class JpegHandler extends ExifBitmapHandler {
 		return true;
 	}
 
-	function validateParam( $name, $value ) {
+	public function validateParam( $name, $value ) {
 		if ( $name === 'quality' ) {
 			return self::validateQuality( $value );
 		} else {
@@ -58,7 +58,7 @@ class JpegHandler extends ExifBitmapHandler {
 		return $value === 'low';
 	}
 
-	function makeParamString( $params ) {
+	public function makeParamString( $params ) {
 		// Prepend quality as "qValue-". This has to match parseParamString() below
 		$res = parent::makeParamString( $params );
 		if ( $res && isset( $params['quality'] ) ) {
@@ -67,7 +67,7 @@ class JpegHandler extends ExifBitmapHandler {
 		return $res;
 	}
 
-	function parseParamString( $str ) {
+	public function parseParamString( $str ) {
 		// $str contains "qlow-200px" or "200px" strings because thumb.php would strip the filename
 		// first - check if the string begins with "qlow-", and if so, treat it as quality.
 		// Pass the first portion, or the whole string if "qlow-" not found, to the parent
@@ -106,7 +106,7 @@ class JpegHandler extends ExifBitmapHandler {
 			$meta['MEDIAWIKI_EXIF_VERSION'] = Exif::version();
 
 			return serialize( $meta );
-		} catch ( MWException $e ) {
+		} catch ( Exception $e ) {
 			// BitmapMetadataHandler throws an exception in certain exceptional
 			// cases like if file does not exist.
 			wfDebug( __METHOD__ . ': ' . $e->getMessage() . "\n" );
@@ -137,16 +137,14 @@ class JpegHandler extends ExifBitmapHandler {
 
 		$rotation = ( $params['rotation'] + $this->getRotation( $file ) ) % 360;
 
-		if ( $wgJpegTran && is_file( $wgJpegTran ) ) {
+		if ( $wgJpegTran && is_executable( $wgJpegTran ) ) {
 			$cmd = wfEscapeShellArg( $wgJpegTran ) .
 				" -rotate " . wfEscapeShellArg( $rotation ) .
 				" -outfile " . wfEscapeShellArg( $params['dstPath'] ) .
 				" " . wfEscapeShellArg( $params['srcPath'] );
 			wfDebug( __METHOD__ . ": running jpgtran: $cmd\n" );
-			wfProfileIn( 'jpegtran' );
 			$retval = 0;
 			$err = wfShellExecWithStderr( $cmd, $retval );
-			wfProfileOut( 'jpegtran' );
 			if ( $retval !== 0 ) {
 				$this->logErrorForExternalProcess( $retval, $err, $cmd );
 

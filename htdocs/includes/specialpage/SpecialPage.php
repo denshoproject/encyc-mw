@@ -1,4 +1,6 @@
 <?php
+use MediaWiki\MediaWikiServices;
+
 /**
  * Parent class for all special pages.
  *
@@ -20,6 +22,8 @@
  * @file
  * @ingroup SpecialPage
  */
+
+use MediaWiki\Auth\AuthManager;
 
 /**
  * Parent class for all special pages.
@@ -58,6 +62,9 @@ class SpecialPage {
 
 	/**
 	 * Get a localised Title object for a specified special page name
+	 *
+	 * @since 1.9
+	 * @since 1.21 $fragment parameter added
 	 *
 	 * @param string $name
 	 * @param string|bool $subpage Subpage string, or false to not use a subpage
@@ -292,6 +299,109 @@ class SpecialPage {
 	}
 
 	/**
+	 * Tells if the special page does something security-sensitive and needs extra defense against
+	 * a stolen account (e.g. a reauthentication). What exactly that will mean is decided by the
+	 * authentication framework.
+	 * @return bool|string False or the argument for AuthManager::securitySensitiveOperationStatus().
+	 *   Typically a special page needing elevated security would return its name here.
+	 */
+	protected function getLoginSecurityLevel() {
+		return false;
+	}
+
+	/**
+	 * Record preserved POST data after a reauthentication.
+	 *
+	 * This is called from checkLoginSecurityLevel() when returning from the
+	 * redirect for reauthentication, if the redirect had been served in
+	 * response to a POST request.
+	 *
+	 * The base SpecialPage implementation does nothing. If your subclass uses
+	 * getLoginSecurityLevel() or checkLoginSecurityLevel(), it should probably
+	 * implement this to do something with the data.
+	 *
+	 * @since 1.32
+	 * @param array $data
+	 */
+	protected function setReauthPostData( array $data ) {
+	}
+
+	/**
+	 * Verifies that the user meets the security level, possibly reauthenticating them in the process.
+	 *
+	 * This should be used when the page does something security-sensitive and needs extra defense
+	 * against a stolen account (e.g. a reauthentication). The authentication framework will make
+	 * an extra effort to make sure the user account is not compromised. What that exactly means
+	 * will depend on the system and user settings; e.g. the user might be required to log in again
+	 * unless their last login happened recently, or they might be given a second-factor challenge.
+	 *
+	 * Calling this method will result in one if these actions:
+	 * - return true: all good.
+	 * - return false and set a redirect: caller should abort; the redirect will take the user
+	 *   to the login page for reauthentication, and back.
+	 * - throw an exception if there is no way for the user to meet the requirements without using
+	 *   a different access method (e.g. this functionality is only available from a specific IP).
+	 *
+	 * Note that this does not in any way check that the user is authorized to use this special page
+	 * (use checkPermissions() for that).
+	 *
+	 * @param string $level A security level. Can be an arbitrary string, defaults to the page name.
+	 * @return bool False means a redirect to the reauthentication page has been set and processing
+	 *   of the special page should be aborted.
+	 * @throws ErrorPageError If the security level cannot be met, even with reauthentication.
+	 */
+	protected function checkLoginSecurityLevel( $level = null ) {
+		$level = $level ?: $this->getName();
+		$key = 'SpecialPage:reauth:' . $this->getName();
+		$request = $this->getRequest();
+
+		$securityStatus = AuthManager::singleton()->securitySensitiveOperationStatus( $level );
+		if ( $securityStatus === AuthManager::SEC_OK ) {
+			$uniqueId = $request->getVal( 'postUniqueId' );
+			if ( $uniqueId ) {
+				$key = $key . ':' . $uniqueId;
+				$session = $request->getSession();
+				$data = $session->getSecret( $key );
+				if ( $data ) {
+					$session->remove( $key );
+					$this->setReauthPostData( $data );
+				}
+			}
+			return true;
+		} elseif ( $securityStatus === AuthManager::SEC_REAUTH ) {
+			$title = self::getTitleFor( 'Userlogin' );
+			$queryParams = $request->getQueryValues();
+
+			if ( $request->wasPosted() ) {
+				$data = array_diff_assoc( $request->getValues(), $request->getQueryValues() );
+				if ( $data ) {
+					// unique ID in case the same special page is open in multiple browser tabs
+					$uniqueId = MWCryptRand::generateHex( 6 );
+					$key = $key . ':' . $uniqueId;
+					$queryParams['postUniqueId'] = $uniqueId;
+					$session = $request->getSession();
+					$session->persist(); // Just in case
+					$session->setSecret( $key, $data );
+				}
+			}
+
+			$query = [
+				'returnto' => $this->getFullTitle()->getPrefixedDBkey(),
+				'returntoquery' => wfArrayToCgi( array_diff_key( $queryParams, [ 'title' => true ] ) ),
+				'force' => $level,
+			];
+			$url = $title->getFullURL( $query, false, PROTO_HTTPS );
+
+			$this->getOutput()->redirect( $url );
+			return false;
+		}
+
+		$titleMessage = wfMessage( 'specialpage-securitylevel-not-allowed-title' );
+		$errorMessage = wfMessage( 'specialpage-securitylevel-not-allowed' );
+		throw new ErrorPageError( $titleMessage, $errorMessage );
+	}
+
+	/**
 	 * Return an array of subpages beginning with $search that this special page will accept.
 	 *
 	 * For example, if a page supports subpages "foo", "bar" and "baz" (as in Special:PageName/foo,
@@ -303,26 +413,69 @@ class SpecialPage {
 	 *   - `prefixSearchSubpages( "" )` should return `array( foo", "bar", "baz" )`
 	 *
 	 * @param string $search Prefix to search for
-	 * @param int $limit Maximum number of results to return
+	 * @param int $limit Maximum number of results to return (usually 10)
+	 * @param int $offset Number of results to skip (usually 0)
 	 * @return string[] Matching subpages
 	 */
-	public function prefixSearchSubpages( $search, $limit = 10 ) {
-		return array();
+	public function prefixSearchSubpages( $search, $limit, $offset ) {
+		$subpages = $this->getSubpagesForPrefixSearch();
+		if ( !$subpages ) {
+			return [];
+		}
+
+		return self::prefixSearchArray( $search, $limit, $subpages, $offset );
+	}
+
+	/**
+	 * Return an array of subpages that this special page will accept for prefix
+	 * searches. If this method requires a query you might instead want to implement
+	 * prefixSearchSubpages() directly so you can support $limit and $offset. This
+	 * method is better for static-ish lists of things.
+	 *
+	 * @return string[] subpages to search from
+	 */
+	protected function getSubpagesForPrefixSearch() {
+		return [];
+	}
+
+	/**
+	 * Perform a regular substring search for prefixSearchSubpages
+	 * @param string $search Prefix to search for
+	 * @param int $limit Maximum number of results to return (usually 10)
+	 * @param int $offset Number of results to skip (usually 0)
+	 * @return string[] Matching subpages
+	 */
+	protected function prefixSearchString( $search, $limit, $offset ) {
+		$title = Title::newFromText( $search );
+		if ( !$title || !$title->canExist() ) {
+			// No prefix suggestion in special and media namespace
+			return [];
+		}
+
+		$searchEngine = MediaWikiServices::getInstance()->newSearchEngine();
+		$searchEngine->setLimitOffset( $limit, $offset );
+		$searchEngine->setNamespaces( [] );
+		$result = $searchEngine->defaultPrefixSearch( $search );
+		return array_map( function( Title $t ) {
+			return $t->getPrefixedText();
+		}, $result );
 	}
 
 	/**
 	 * Helper function for implementations of prefixSearchSubpages() that
-	 * filter the values in memory (as oppposed to making a query).
+	 * filter the values in memory (as opposed to making a query).
 	 *
 	 * @since 1.24
 	 * @param string $search
 	 * @param int $limit
 	 * @param array $subpages
+	 * @param int $offset
 	 * @return string[]
 	 */
-	protected static function prefixSearchArray( $search, $limit, array $subpages ) {
+	protected static function prefixSearchArray( $search, $limit, array $subpages, $offset ) {
 		$escaped = preg_quote( $search, '/' );
-		return array_slice( preg_grep( "/^$escaped/i", $subpages ), 0, $limit );
+		return array_slice( preg_grep( "/^$escaped/i",
+			array_slice( $subpages, $offset ) ), 0, $limit );
 	}
 
 	/**
@@ -334,10 +487,11 @@ class SpecialPage {
 		$out->setRobotPolicy( $this->getRobotPolicy() );
 		$out->setPageTitle( $this->getDescription() );
 		if ( $this->getConfig()->get( 'UseMediaWikiUIEverywhere' ) ) {
-			$out->addModuleStyles( array(
+			$out->addModuleStyles( [
 				'mediawiki.ui.input',
+				'mediawiki.ui.radio',
 				'mediawiki.ui.checkbox',
-			) );
+			] );
 		}
 	}
 
@@ -351,15 +505,20 @@ class SpecialPage {
 	final public function run( $subPage ) {
 		/**
 		 * Gets called before @see SpecialPage::execute.
+		 * Return false to prevent calling execute() (since 1.27+).
 		 *
 		 * @since 1.20
 		 *
 		 * @param SpecialPage $this
 		 * @param string|null $subPage
 		 */
-		wfRunHooks( 'SpecialPageBeforeExecute', array( $this, $subPage ) );
+		if ( !Hooks::run( 'SpecialPageBeforeExecute', [ $this, $subPage ] ) ) {
+			return;
+		}
 
-		$this->beforeExecute( $subPage );
+		if ( $this->beforeExecute( $subPage ) === false ) {
+			return;
+		}
 		$this->execute( $subPage );
 		$this->afterExecute( $subPage );
 
@@ -371,15 +530,17 @@ class SpecialPage {
 		 * @param SpecialPage $this
 		 * @param string|null $subPage
 		 */
-		wfRunHooks( 'SpecialPageAfterExecute', array( $this, $subPage ) );
+		Hooks::run( 'SpecialPageAfterExecute', [ $this, $subPage ] );
 	}
 
 	/**
 	 * Gets called before @see SpecialPage::execute.
+	 * Return false to prevent calling execute() (since 1.27+).
 	 *
 	 * @since 1.20
 	 *
 	 * @param string|null $subPage
+	 * @return bool|void
 	 */
 	protected function beforeExecute( $subPage ) {
 		// No-op
@@ -407,6 +568,10 @@ class SpecialPage {
 	public function execute( $subPage ) {
 		$this->setHeaders();
 		$this->checkPermissions();
+		$securityLevel = $this->getLoginSecurityLevel();
+		if ( $securityLevel !== false && !$this->checkLoginSecurityLevel( $securityLevel ) ) {
+			return;
+		}
 		$this->outputHeader();
 	}
 
@@ -582,7 +747,7 @@ class SpecialPage {
 	 */
 	public function msg( /* $args */ ) {
 		$message = call_user_func_array(
-			array( $this->getContext(), 'msg' ),
+			[ $this->getContext(), 'msg' ],
 			func_get_args()
 		);
 		// RequestContext passes context to wfMessage, and the language is set from
@@ -605,9 +770,29 @@ class SpecialPage {
 		$feedTemplate = wfScript( 'api' );
 
 		foreach ( $this->getConfig()->get( 'FeedClasses' ) as $format => $class ) {
-			$theseParams = $params + array( 'feedformat' => $format );
+			$theseParams = $params + [ 'feedformat' => $format ];
 			$url = wfAppendQuery( $feedTemplate, $theseParams );
 			$this->getOutput()->addFeedLink( $format, $url );
+		}
+	}
+
+	/**
+	 * Adds help link with an icon via page indicators.
+	 * Link target can be overridden by a local message containing a wikilink:
+	 * the message key is: lowercase special page name + '-helppage'.
+	 * @param string $to Target MediaWiki.org page title or encoded URL.
+	 * @param bool $overrideBaseUrl Whether $url is a full URL, to avoid MW.o.
+	 * @since 1.25
+	 */
+	public function addHelpLink( $to, $overrideBaseUrl = false ) {
+		global $wgContLang;
+		$msg = $this->msg( $wgContLang->lc( $this->getName() ) . '-helppage' );
+
+		if ( !$msg->isDisabled() ) {
+			$helpUrl = Skin::makeUrl( $msg->plain() );
+			$this->getOutput()->addHelpLink( $helpUrl, true );
+		} else {
+			$this->getOutput()->addHelpLink( $to, $overrideBaseUrl );
 		}
 	}
 
@@ -621,7 +806,6 @@ class SpecialPage {
 	 */
 	public function getFinalGroupName() {
 		$name = $this->getName();
-		$specialPageGroups = $this->getConfig()->get( 'SpecialPageGroups' );
 
 		// Allow overbidding the group from the wiki side
 		$msg = $this->msg( 'specialpages-specialpagegroup-' . strtolower( $name ) )->inContentLanguage();
@@ -630,21 +814,19 @@ class SpecialPage {
 		} else {
 			// Than use the group from this object
 			$group = $this->getGroupName();
-
-			// Group '-' is used as default to have the chance to determine,
-			// if the special pages overrides this method,
-			// if not overridden, $wgSpecialPageGroups is checked for b/c
-			if ( $group === '-' && isset( $specialPageGroups[$name] ) ) {
-				$group = $specialPageGroups[$name];
-			}
-		}
-
-		// never give '-' back, change to 'other'
-		if ( $group === '-' ) {
-			$group = 'other';
 		}
 
 		return $group;
+	}
+
+	/**
+	 * Indicates whether this special page may perform database writes
+	 *
+	 * @return bool
+	 * @since 1.27
+	 */
+	public function doesWrites() {
+		return false;
 	}
 
 	/**
@@ -656,8 +838,16 @@ class SpecialPage {
 	 * @since 1.21
 	 */
 	protected function getGroupName() {
-		// '-' used here to determine, if this group is overridden or has a hardcoded 'other'
-		// Needed for b/c in getFinalGroupName
-		return '-';
+		return 'other';
+	}
+
+	/**
+	 * Call wfTransactionalTimeLimit() if this request was POSTed
+	 * @since 1.26
+	 */
+	protected function useTransactionalTimeLimit() {
+		if ( $this->getRequest()->wasPosted() ) {
+			wfTransactionalTimeLimit();
+		}
 	}
 }

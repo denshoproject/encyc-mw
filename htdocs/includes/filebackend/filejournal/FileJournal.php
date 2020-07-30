@@ -57,14 +57,14 @@ abstract class FileJournal {
 	 *
 	 * @param array $config
 	 * @param string $backend A registered file backend name
-	 * @throws MWException
+	 * @throws Exception
 	 * @return FileJournal
 	 */
 	final public static function factory( array $config, $backend ) {
 		$class = $config['class'];
 		$jrn = new $class( $config );
 		if ( !$jrn instanceof self ) {
-			throw new MWException( "Class given is not an instance of FileJournal." );
+			throw new Exception( "Class given is not an instance of FileJournal." );
 		}
 		$jrn->backend = $backend;
 
@@ -81,9 +81,9 @@ abstract class FileJournal {
 		for ( $i = 0; $i < 5; $i++ ) {
 			$s .= mt_rand( 0, 2147483647 );
 		}
-		$s = wfBaseConvert( sha1( $s ), 16, 36, 31 );
+		$s = Wikimedia\base_convert( sha1( $s ), 16, 36, 31 );
 
-		return substr( wfBaseConvert( wfTimestamp( TS_MW ), 10, 36, 9 ) . $s, 0, 31 );
+		return substr( Wikimedia\base_convert( wfTimestamp( TS_MW ), 10, 36, 9 ) . $s, 0, 31 );
 	}
 
 	/**
@@ -238,7 +238,7 @@ class NullFileJournal extends FileJournal {
 	 * @return array
 	 */
 	protected function doGetChangeEntries( $start, $limit ) {
-		return array();
+		return [];
 	}
 
 	/**

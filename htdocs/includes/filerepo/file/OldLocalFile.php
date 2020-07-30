@@ -88,7 +88,7 @@ class OldLocalFile extends LocalFile {
 	static function newFromKey( $sha1, $repo, $timestamp = false ) {
 		$dbr = $repo->getSlaveDB();
 
-		$conds = array( 'oi_sha1' => $sha1 );
+		$conds = [ 'oi_sha1' => $sha1 ];
 		if ( $timestamp ) {
 			$conds['oi_timestamp'] = $dbr->timestamp( $timestamp );
 		}
@@ -106,7 +106,7 @@ class OldLocalFile extends LocalFile {
 	 * @return array
 	 */
 	static function selectFields() {
-		return array(
+		return [
 			'oi_name',
 			'oi_archive_name',
 			'oi_size',
@@ -123,7 +123,7 @@ class OldLocalFile extends LocalFile {
 			'oi_timestamp',
 			'oi_deleted',
 			'oi_sha1',
-		);
+		];
 	}
 
 	/**
@@ -175,37 +175,36 @@ class OldLocalFile extends LocalFile {
 	}
 
 	function loadFromDB( $flags = 0 ) {
-		wfProfileIn( __METHOD__ );
-
 		$this->dataLoaded = true;
 
-		$dbr = $this->repo->getSlaveDB();
-		$conds = array( 'oi_name' => $this->getName() );
+		$dbr = ( $flags & self::READ_LATEST )
+			? $this->repo->getMasterDB()
+			: $this->repo->getSlaveDB();
+
+		$conds = [ 'oi_name' => $this->getName() ];
 		if ( is_null( $this->requestedTime ) ) {
 			$conds['oi_archive_name'] = $this->archive_name;
 		} else {
 			$conds['oi_timestamp'] = $dbr->timestamp( $this->requestedTime );
 		}
 		$row = $dbr->selectRow( 'oldimage', $this->getCacheFields( 'oi_' ),
-			$conds, __METHOD__, array( 'ORDER BY' => 'oi_timestamp DESC' ) );
+			$conds, __METHOD__, [ 'ORDER BY' => 'oi_timestamp DESC' ] );
 		if ( $row ) {
 			$this->loadFromRow( $row, 'oi_' );
 		} else {
 			$this->fileExists = false;
 		}
 
-		wfProfileOut( __METHOD__ );
 	}
 
 	/**
 	 * Load lazy file metadata from the DB
 	 */
 	protected function loadExtraFromDB() {
-		wfProfileIn( __METHOD__ );
 
 		$this->extraDataLoaded = true;
 		$dbr = $this->repo->getSlaveDB();
-		$conds = array( 'oi_name' => $this->getName() );
+		$conds = [ 'oi_name' => $this->getName() ];
 		if ( is_null( $this->requestedTime ) ) {
 			$conds['oi_archive_name'] = $this->archive_name;
 		} else {
@@ -213,12 +212,12 @@ class OldLocalFile extends LocalFile {
 		}
 		// In theory the file could have just been renamed/deleted...oh well
 		$row = $dbr->selectRow( 'oldimage', $this->getLazyCacheFields( 'oi_' ),
-			$conds, __METHOD__, array( 'ORDER BY' => 'oi_timestamp DESC' ) );
+			$conds, __METHOD__, [ 'ORDER BY' => 'oi_timestamp DESC' ] );
 
 		if ( !$row ) { // fallback to master
 			$dbr = $this->repo->getMasterDB();
 			$row = $dbr->selectRow( 'oldimage', $this->getLazyCacheFields( 'oi_' ),
-				$conds, __METHOD__, array( 'ORDER BY' => 'oi_timestamp DESC' ) );
+				$conds, __METHOD__, [ 'ORDER BY' => 'oi_timestamp DESC' ] );
 		}
 
 		if ( $row ) {
@@ -226,11 +225,9 @@ class OldLocalFile extends LocalFile {
 				$this->$name = $value;
 			}
 		} else {
-			wfProfileOut( __METHOD__ );
 			throw new MWException( "Could not find data for image '{$this->archive_name}'." );
 		}
 
-		wfProfileOut( __METHOD__ );
 	}
 
 	/**
@@ -260,13 +257,11 @@ class OldLocalFile extends LocalFile {
 	}
 
 	function upgradeRow() {
-		wfProfileIn( __METHOD__ );
 		$this->loadFromFile();
 
 		# Don't destroy file info of missing files
 		if ( !$this->fileExists ) {
 			wfDebug( __METHOD__ . ": file does not exist, aborting\n" );
-			wfProfileOut( __METHOD__ );
 
 			return;
 		}
@@ -276,7 +271,7 @@ class OldLocalFile extends LocalFile {
 
 		wfDebug( __METHOD__ . ': upgrading ' . $this->archive_name . " to the current schema\n" );
 		$dbw->update( 'oldimage',
-			array(
+			[
 				'oi_size' => $this->size, // sanity
 				'oi_width' => $this->width,
 				'oi_height' => $this->height,
@@ -286,12 +281,11 @@ class OldLocalFile extends LocalFile {
 				'oi_minor_mime' => $minor,
 				'oi_metadata' => $this->metadata,
 				'oi_sha1' => $this->sha1,
-			), array(
+			], [
 				'oi_name' => $this->getName(),
-				'oi_archive_name' => $this->archive_name ),
+				'oi_archive_name' => $this->archive_name ],
 			__METHOD__
 		);
-		wfProfileOut( __METHOD__ );
 	}
 
 	/**
@@ -338,16 +332,13 @@ class OldLocalFile extends LocalFile {
 	 * @param string $timestamp
 	 * @param string $comment
 	 * @param User $user
-	 * @param int $flags
 	 * @return FileRepoStatus
 	 */
-	function uploadOld( $srcPath, $archiveName, $timestamp, $comment, $user, $flags = 0 ) {
+	function uploadOld( $srcPath, $archiveName, $timestamp, $comment, $user ) {
 		$this->lock();
 
 		$dstRel = 'archive/' . $this->getHashPath() . $archiveName;
-		$status = $this->publishTo( $srcPath, $dstRel,
-			$flags & File::DELETE_SOURCE ? FileRepo::DELETE_SOURCE : 0
-		);
+		$status = $this->publishTo( $srcPath, $dstRel );
 
 		if ( $status->isGood() ) {
 			if ( !$this->recordOldUpload( $srcPath, $archiveName, $timestamp, $comment, $user ) ) {
@@ -370,9 +361,8 @@ class OldLocalFile extends LocalFile {
 	 * @param User $user User who did this upload
 	 * @return bool
 	 */
-	function recordOldUpload( $srcPath, $archiveName, $timestamp, $comment, $user ) {
+	protected function recordOldUpload( $srcPath, $archiveName, $timestamp, $comment, $user ) {
 		$dbw = $this->repo->getMasterDB();
-		$dbw->begin( __METHOD__ );
 
 		$dstPath = $this->repo->getZonePath( 'public' ) . '/' . $this->getRel();
 		$props = $this->repo->getFileProps( $dstPath );
@@ -381,7 +371,7 @@ class OldLocalFile extends LocalFile {
 		}
 
 		$dbw->insert( 'oldimage',
-			array(
+			[
 				'oi_name' => $this->getName(),
 				'oi_archive_name' => $archiveName,
 				'oi_size' => $props['size'],
@@ -397,10 +387,8 @@ class OldLocalFile extends LocalFile {
 				'oi_major_mime' => $props['major_mime'],
 				'oi_minor_mime' => $props['minor_mime'],
 				'oi_sha1' => $props['sha1'],
-			), __METHOD__
+			], __METHOD__
 		);
-
-		$dbw->commit( __METHOD__ );
 
 		return true;
 	}
