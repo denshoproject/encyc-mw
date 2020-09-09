@@ -1,5 +1,7 @@
 <?php
 
+use Wikimedia\TestingAccessWrapper;
+
 /**
  * @group API
  * @group Database
@@ -17,7 +19,7 @@ class ApiLoginTest extends ApiTestCase {
 			'wsTokenSecrets' => [ 'login' => 'foobar' ],
 		];
 		$data = $this->doApiRequest( [ 'action' => 'login',
-			'lgname' => '', 'lgpassword' => self::$users['sysop']->password,
+			'lgname' => '', 'lgpassword' => self::$users['sysop']->getPassword(),
 			'lgtoken' => (string)( new MediaWiki\Session\Token( 'foobar', '' ) )
 		], $session );
 		$this->assertEquals( 'Failed', $data[0]['login']['result'] );
@@ -27,6 +29,7 @@ class ApiLoginTest extends ApiTestCase {
 		global $wgServer;
 
 		$user = self::$users['sysop'];
+		$userName = $user->getUser()->getName();
 		$user->getUser()->logout();
 
 		if ( !isset( $wgServer ) ) {
@@ -34,7 +37,7 @@ class ApiLoginTest extends ApiTestCase {
 		}
 		$ret = $this->doApiRequest( [
 			"action" => "login",
-			"lgname" => $user->username,
+			"lgname" => $userName,
 			"lgpassword" => "bad",
 		] );
 
@@ -50,7 +53,7 @@ class ApiLoginTest extends ApiTestCase {
 			[
 				"action" => "login",
 				"lgtoken" => $token,
-				"lgname" => $user->username,
+				"lgname" => $userName,
 				"lgpassword" => "badnowayinhell",
 			],
 			$ret[2]
@@ -72,12 +75,14 @@ class ApiLoginTest extends ApiTestCase {
 		}
 
 		$user = self::$users['sysop'];
+		$userName = $user->getUser()->getName();
+		$password = $user->getPassword();
 		$user->getUser()->logout();
 
 		$ret = $this->doApiRequest( [
 				"action" => "login",
-				"lgname" => $user->username,
-				"lgpassword" => $user->password,
+				"lgname" => $userName,
+				"lgpassword" => $password,
 			]
 		);
 
@@ -93,8 +98,8 @@ class ApiLoginTest extends ApiTestCase {
 			[
 				"action" => "login",
 				"lgtoken" => $token,
-				"lgname" => $user->username,
-				"lgpassword" => $user->password,
+				"lgname" => $userName,
+				"lgpassword" => $password,
 			],
 			$ret[2]
 		);
@@ -120,12 +125,14 @@ class ApiLoginTest extends ApiTestCase {
 			$this->markTestIncomplete( 'This test needs $wgServer to be set in LocalSettings.php' );
 		}
 		$user = self::$users['sysop'];
+		$userName = $user->getUser()->getName();
+		$password = $user->getPassword();
 
 		$req = MWHttpRequest::factory( self::$apiUrl . "?action=login&format=xml",
 			[ "method" => "POST",
 				"postData" => [
-					"lgname" => $user->username,
-					"lgpassword" => $user->password
+					"lgname" => $userName,
+					"lgpassword" => $password
 				]
 			],
 			__METHOD__
@@ -135,7 +142,7 @@ class ApiLoginTest extends ApiTestCase {
 		libxml_use_internal_errors( true );
 		$sxe = simplexml_load_string( $req->getContent() );
 		$this->assertNotInternalType( "bool", $sxe );
-		$this->assertThat( $sxe, $this->isInstanceOf( "SimpleXMLElement" ) );
+		$this->assertThat( $sxe, $this->isInstanceOf( SimpleXMLElement::class ) );
 		$this->assertNotInternalType( "null", $sxe->login[0] );
 
 		$a = $sxe->login[0]->attributes()->result[0];
@@ -144,8 +151,8 @@ class ApiLoginTest extends ApiTestCase {
 
 		$req->setData( [
 			"lgtoken" => $token,
-			"lgname" => $user->username,
-			"lgpassword" => $user->password ] );
+			"lgname" => $userName,
+			"lgpassword" => $password ] );
 		$req->execute();
 
 		$cj = $req->getCookieJar();
@@ -160,11 +167,14 @@ class ApiLoginTest extends ApiTestCase {
 	}
 
 	public function testRunLogin() {
-		$sysopUser = self::$users['sysop'];
+		$user = self::$users['sysop'];
+		$userName = $user->getUser()->getName();
+		$password = $user->getPassword();
+
 		$data = $this->doApiRequest( [
 			'action' => 'login',
-			'lgname' => $sysopUser->username,
-			'lgpassword' => $sysopUser->password ] );
+			'lgname' => $userName,
+			'lgpassword' => $password ] );
 
 		$this->assertArrayHasKey( "login", $data[0] );
 		$this->assertArrayHasKey( "result", $data[0]['login'] );
@@ -174,13 +184,12 @@ class ApiLoginTest extends ApiTestCase {
 		$data = $this->doApiRequest( [
 			'action' => 'login',
 			"lgtoken" => $token,
-			"lgname" => $sysopUser->username,
-			"lgpassword" => $sysopUser->password ], $data[2] );
+			"lgname" => $userName,
+			"lgpassword" => $password ], $data[2] );
 
 		$this->assertArrayHasKey( "login", $data[0] );
 		$this->assertArrayHasKey( "result", $data[0]['login'] );
 		$this->assertEquals( "Success", $data[0]['login']['result'] );
-		$this->assertArrayHasKey( 'lgtoken', $data[0]['login'] );
 	}
 
 	public function testBotPassword() {
@@ -243,7 +252,7 @@ class ApiLoginTest extends ApiTestCase {
 			__METHOD__
 		);
 
-		$lgName = $user->username . BotPassword::getSeparator() . 'foo';
+		$lgName = $user->getUser()->getName() . BotPassword::getSeparator() . 'foo';
 
 		$ret = $this->doApiRequest( [
 			'action' => 'login',
@@ -273,4 +282,20 @@ class ApiLoginTest extends ApiTestCase {
 		$this->assertEquals( 'Success', $a );
 	}
 
+	public function testLoginWithNoSameOriginSecurity() {
+		$this->setTemporaryHook( 'RequestHasSameOriginSecurity',
+			function () {
+				return false;
+			}
+		);
+
+		$result = $this->doApiRequest( [
+			'action' => 'login',
+		] )[0]['login'];
+
+		$this->assertSame( [
+			'result' => 'Aborted',
+			'reason' => 'Cannot log in when the same-origin policy is not applied.',
+		], $result );
+	}
 }
