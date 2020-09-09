@@ -123,8 +123,8 @@ $wgDefaultSkin = "vector";
 
 # Enabled skins.
 # The following skins were automatically enabled:
-wfLoadSkin( 'CologneBlue' );
-wfLoadSkin( 'Modern' );
+#wfLoadSkin( 'CologneBlue' );
+#wfLoadSkin( 'Modern' );
 wfLoadSkin( 'MonoBook' );
 wfLoadSkin( 'Vector' );
 

@@ -1,16 +1,36 @@
 <?php
+/**
+ * Extension to add parserfunction {{#incat:foo|yes|no}}
+ *
+ * @author Brian Wolff <bawolff+ext _at_ gmail _dot_ com>
+ *
+ * Copyright © Brian Wolff 2011.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ */
 class PageInCat {
 
 	/**
 	 * Really hacky array for categories of page
-	 * that we are previewing. See onEditPageGetPreviewText
+	 * that we are previewing. See onEditPageGetPreviewContent
 	 * method. Each key is an md5sum of page text, and each key
 	 * is an array of categories
 	 */
 	public static $categoriesForPreview = array();
 
-
-	/** 
+	/**
 	 * Register the parser hook.
 	 * @param $parser Parser
 	 */
@@ -37,19 +57,23 @@ class PageInCat {
 	}
 
 	/**
-	 * check if $page belongs to $category
+	 * Check if $page belongs to $category
 	 * @param $page Title current page
 	 * @param $category String category to check (not a title object!)
 	 * @param $parser Parser
 	 * @return boolean If $page is a member of $category
 	 */
 	private static function inCat( Title $page, $category, Parser $parser ) {
-		if ( $category === '' ) return false;
+		if ( $category === '' ) {
+			return false;
+		}
 		$catTitle = Title::makeTitleSafe(
 			NS_CATEGORY,
 			$category
 		);
-		if ( !$catTitle ) return false;
+		if ( !$catTitle ) {
+			return false;
+		}
 		$catDBkey = $catTitle->getDBkey();
 
 		if ( !isset( $parser->pageInCat_cache ) ) {
@@ -58,7 +82,7 @@ class PageInCat {
 			if ( isset( $parser->pageInCat_cache[$catDBkey] ) ) {
 				# been there done that, return cached value
 				return $parser->pageInCat_cache[$catDBkey];
-			} elseif( isset( $parser->pageInCat_onlyCache ) && $parser->pageInCat_onlyCache ) {
+			} elseif ( isset( $parser->pageInCat_onlyCache ) && $parser->pageInCat_onlyCache ) {
 				# All categories have been preloaded into cache, so
 				# we must have hit a cat not in page.
 				# Mark it so can be checked for correctness later.
@@ -146,19 +170,20 @@ class PageInCat {
 	 */
 	public static function onParserAfterTidy( Parser $parser, $text ) {
 		global $wgLang;
-		if ( !isset( $parser->pageInCat_cache )
-			|| !$parser->getOptions()->getIsPreview()
-		) {
+		if (
+			!isset( $parser->pageInCat_cache ) ||
+			!$parser->getOptions()->getIsPreview()
+		)
+		{
 			# page in cat extension not even used
 			# or this is not a preview.
 			return true;
 		}
 
-		wfProfileIn( __METHOD__ . '-actual' );
 		$actualCategories = $parser->getOutput()->getCategories();
 		$wrongCategories = array();
 
-		foreach( $parser->pageInCat_cache as $catName => $catIncluded ) {
+		foreach ( $parser->pageInCat_cache as $catName => $catIncluded ) {
 			# A little hacky, but I want the cat names italicized.
 			$catNameDisplay = "''" . str_replace( '_', ' ', $catName ) . "''";
 			if ( $catIncluded ) {
@@ -166,7 +191,7 @@ class PageInCat {
 					# Cat is included, and actually should be
 					# So do nothing and continue
 				} else {
-					$wrongCategories[$catNameDisplay] = true;	
+					$wrongCategories[$catNameDisplay] = true;
 				}
 			} else { # Should not be included
 				if ( isset( $actualCategories[$catName] ) ) {
@@ -202,7 +227,6 @@ class PageInCat {
 
 			$parser->getOutput()->addWarning( $msg );
 		}
-		wfProfileOut( __METHOD__ . '-actual' );
 
 		return true;
 	}
@@ -220,12 +244,14 @@ class PageInCat {
 	 * @todo Find a non-ugly way of doing this (is that possible?)
 	 *
 	 * @param $editPage EditPage
-	 * @param $text String wikitext to be parsed
+	 * @param $content Content wikitext to be parsed
 	 * @return boolean true
 	 */
-	public static function onEditPageGetPreviewText( EditPage $editPage, $text ) {
+	public static function onEditPageGetPreviewContent( EditPage $editPage, $content ) {
 		global $wgPageInCatUseAccuratePreview;
-		if ( !$wgPageInCatUseAccuratePreview ) return true; // disable this hacky mess ;)
+		if ( !$wgPageInCatUseAccuratePreview ) {
+			return true; // disable this hacky mess ;)
+		}
 
 		global $wgParser; // we are not parsing anything yet, so should be safe.
 		$curUser = RequestContext::getMain()->getUser(); // aka $wgUser in disguise
@@ -242,7 +268,8 @@ class PageInCat {
 		$parserOptions->enableLimitReport();
 
 		// I suppose I should be using $editPage->getTitle() but that's new in 1.19
-		$toparse = $wgParser->preSaveTransform( $text, $editPage->mTitle, $curUser, $parserOptions );
+		$toparse = $wgParser->preSaveTransform(
+			ContentHandler::getContentText( $content ), $editPage->mTitle, $curUser, $parserOptions );
 		$hash = md5( $toparse, true );
 		$parserOutput = $wgParser->parse( $toparse, $editPage->mTitle, $parserOptions );
 
@@ -261,7 +288,7 @@ class PageInCat {
 	/**
 	 * Insert categories from previous pre-preview parse into parser.
 	 *
-	 * See onEditPageGetPreviewText. This is rather fragile/scary.
+	 * See onEditPageGetPreviewContent. This is rather fragile/scary.
 	 * If anyone has a suggestion for how to do this better, please let me know.
 	 *
 	 * @param $parser Parser
@@ -298,7 +325,7 @@ class PageInCat {
 			$parser->pageInCat_cache = array();
 		}
 
-		foreach( self::$categoriesForPreview[$hash] as $catName ) {
+		foreach ( self::$categoriesForPreview[$hash] as $catName ) {
 			$parser->pageInCat_cache[$catName] = true;
 		}
 		// Assume anything not in the cache is false.
