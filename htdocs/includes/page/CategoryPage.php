@@ -27,7 +27,7 @@
  */
 class CategoryPage extends Article {
 	# Subclasses can change this to override the viewer class.
-	protected $mCategoryViewerClass = 'CategoryViewer';
+	protected $mCategoryViewerClass = CategoryViewer::class;
 
 	/**
 	 * @var WikiCategoryPage
@@ -41,18 +41,6 @@ class CategoryPage extends Article {
 	protected function newPage( Title $title ) {
 		// Overload mPage with a category-specific page
 		return new WikiCategoryPage( $title );
-	}
-
-	/**
-	 * Constructor from a page id
-	 * @param int $id Article ID to load
-	 * @return CategoryPage|null
-	 */
-	public static function newFromID( $id ) {
-		$t = Title::newFromID( $id );
-		# @todo FIXME: Doesn't inherit right
-		return $t == null ? null : new self( $t );
-		# return $t == null ? null : new static( $t ); // PHP 5.3
 	}
 
 	function view() {
@@ -74,15 +62,19 @@ class CategoryPage extends Article {
 		}
 
 		$title = $this->getTitle();
-		if ( NS_CATEGORY == $title->getNamespace() ) {
+		if ( $title->inNamespace( NS_CATEGORY ) ) {
 			$this->openShowCategory();
 		}
 
 		parent::view();
 
-		if ( NS_CATEGORY == $title->getNamespace() ) {
+		if ( $title->inNamespace( NS_CATEGORY ) ) {
 			$this->closeShowCategory();
 		}
+
+		# Use adaptive TTLs for CDN so delayed/failed purges are noticed less often
+		$outputPage = $this->getContext()->getOutput();
+		$outputPage->adaptCdnTTL( $this->mPage->getTouched(), IExpiringStore::TTL_MINUTE );
 	}
 
 	function openShowCategory() {
@@ -124,5 +116,13 @@ class CategoryPage extends Article {
 		$out = $this->getContext()->getOutput();
 		$out->addHTML( $viewer->getHTML() );
 		$this->addHelpLink( 'Help:Categories' );
+	}
+
+	function getCategoryViewerClass() {
+		return $this->mCategoryViewerClass;
+	}
+
+	function setCategoryViewerClass( $class ) {
+		$this->mCategoryViewerClass = $class;
 	}
 }

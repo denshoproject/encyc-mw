@@ -21,11 +21,7 @@
  * @ingroup Maintenance
  */
 
-// Checking for old versions of PHP is done in Maintenance.php
-// We need to use dirname( __FILE__ ) here cause __DIR__ is PHP5.3+
-// @codingStandardsIgnoreStart MediaWiki.Usage.DirUsage.FunctionFound
-require_once dirname( __FILE__ ) . '/Maintenance.php';
-// @codingStandardsIgnoreEnd
+require_once __DIR__ . '/Maintenance.php';
 
 define( 'MW_CONFIG_CALLBACK', 'Installer::overrideConfig' );
 define( 'MEDIAWIKI_INSTALL', true );
@@ -96,42 +92,23 @@ class CommandLineInstaller extends Maintenance {
 		$this->addOption( 'with-extensions', "Detect and include extensions" );
 	}
 
+	public function getDbType() {
+		if ( $this->hasOption( 'env-checks' ) ) {
+			return Maintenance::DB_NONE;
+		}
+		return parent::getDbType();
+	}
+
 	function execute() {
 		global $IP;
 
 		$siteName = $this->getArg( 0, 'MediaWiki' ); // Will not be set if used with --env-checks
 		$adminName = $this->getArg( 1 );
+		$envChecksOnly = $this->hasOption( 'env-checks' );
 
-		$dbpassfile = $this->getOption( 'dbpassfile' );
-		if ( $dbpassfile !== null ) {
-			if ( $this->getOption( 'dbpass' ) !== null ) {
-				$this->error( 'WARNING: You have provided the options "dbpass" and "dbpassfile". '
-					. 'The content of "dbpassfile" overrides "dbpass".' );
-			}
-			MediaWiki\suppressWarnings();
-			$dbpass = file_get_contents( $dbpassfile ); // returns false on failure
-			MediaWiki\restoreWarnings();
-			if ( $dbpass === false ) {
-				$this->error( "Couldn't open $dbpassfile", true );
-			}
-			$this->mOptions['dbpass'] = trim( $dbpass, "\r\n" );
-		}
-
-		$passfile = $this->getOption( 'passfile' );
-		if ( $passfile !== null ) {
-			if ( $this->getOption( 'pass' ) !== null ) {
-				$this->error( 'WARNING: You have provided the options "pass" and "passfile". '
-					. 'The content of "passfile" overrides "pass".' );
-			}
-			MediaWiki\suppressWarnings();
-			$pass = file_get_contents( $passfile ); // returns false on failure
-			MediaWiki\restoreWarnings();
-			if ( $pass === false ) {
-				$this->error( "Couldn't open $passfile", true );
-			}
-			$this->mOptions['pass'] = trim( $pass, "\r\n" );
-		} elseif ( $this->getOption( 'pass' ) === null ) {
-			$this->error( 'You need to provide the option "pass" or "passfile"', true );
+		$this->setDbPassOption();
+		if ( !$envChecksOnly ) {
+			$this->setPassOption();
 		}
 
 		$installer = InstallerOverrides::getCliInstaller( $siteName, $adminName, $this->mOptions );
@@ -144,9 +121,45 @@ class CommandLineInstaller extends Maintenance {
 
 			return;
 		}
-		if ( !$this->hasOption( 'env-checks' ) ) {
+		if ( !$envChecksOnly ) {
 			$installer->execute();
 			$installer->writeConfigurationFile( $this->getOption( 'confpath', $IP ) );
+		}
+	}
+
+	private function setDbPassOption() {
+		$dbpassfile = $this->getOption( 'dbpassfile' );
+		if ( $dbpassfile !== null ) {
+			if ( $this->getOption( 'dbpass' ) !== null ) {
+				$this->error( 'WARNING: You have provided the options "dbpass" and "dbpassfile". '
+					. 'The content of "dbpassfile" overrides "dbpass".' );
+			}
+			Wikimedia\suppressWarnings();
+			$dbpass = file_get_contents( $dbpassfile ); // returns false on failure
+			Wikimedia\restoreWarnings();
+			if ( $dbpass === false ) {
+				$this->fatalError( "Couldn't open $dbpassfile" );
+			}
+			$this->mOptions['dbpass'] = trim( $dbpass, "\r\n" );
+		}
+	}
+
+	private function setPassOption() {
+		$passfile = $this->getOption( 'passfile' );
+		if ( $passfile !== null ) {
+			if ( $this->getOption( 'pass' ) !== null ) {
+				$this->error( 'WARNING: You have provided the options "pass" and "passfile". '
+					. 'The content of "passfile" overrides "pass".' );
+			}
+			Wikimedia\suppressWarnings();
+			$pass = file_get_contents( $passfile ); // returns false on failure
+			Wikimedia\restoreWarnings();
+			if ( $pass === false ) {
+				$this->fatalError( "Couldn't open $passfile" );
+			}
+			$this->mOptions['pass'] = trim( $pass, "\r\n" );
+		} elseif ( $this->getOption( 'pass' ) === null ) {
+			$this->fatalError( 'You need to provide the option "pass" or "passfile"' );
 		}
 	}
 
@@ -157,6 +170,6 @@ class CommandLineInstaller extends Maintenance {
 	}
 }
 
-$maintClass = 'CommandLineInstaller';
+$maintClass = CommandLineInstaller::class;
 
 require_once RUN_MAINTENANCE_IF_MAIN;

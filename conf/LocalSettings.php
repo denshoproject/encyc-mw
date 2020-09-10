@@ -119,13 +119,12 @@ $wgGroupPermissions['*']['edit'] = false;
 
 ## Default skin: you can change the default skin. Use the internal symbolic
 ## names, ie 'vector', 'monobook':
-$wgDefaultSkin = "vector";
+$wgDefaultSkin = "timeless";
 
 # Enabled skins.
 # The following skins were automatically enabled:
-wfLoadSkin( 'CologneBlue' );
-wfLoadSkin( 'Modern' );
 wfLoadSkin( 'MonoBook' );
+wfLoadSkin( 'Timeless' );
 wfLoadSkin( 'Vector' );
 
 
@@ -153,8 +152,8 @@ wfLoadExtension( 'WikiEditor' );
 
 # Extensions not included in the defaut MediaWiki:
 require_once "$IP/extensions/Loops/Loops.php";
-require_once "$IP/extensions/PageInCat/PageInCat.php";
-require_once "$IP/extensions/Variables/Variables.php";
+wfLoadExtension( 'PageInCat' );
+wfLoadExtension( 'Variables' );
 
 # End of automatically generated settings.
 # Add more configuration options below.

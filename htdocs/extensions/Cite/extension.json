@@ -12,8 +12,11 @@
 	],
 	"url": "https://www.mediawiki.org/wiki/Extension:Cite",
 	"descriptionmsg": "cite-desc",
-	"license-name": "GPL-2.0+",
+	"license-name": "GPL-2.0-or-later",
 	"type": "parserhook",
+	"requires": {
+		"MediaWiki": ">= 1.30.0"
+	},
 	"MessagesDirs": {
 		"cite": "i18n",
 		"ve-cite": "modules/ve-cite/i18n"
@@ -41,7 +44,11 @@
 		],
 		"LinksUpdateComplete": [
 			"CiteHooks::onLinksUpdateComplete"
-		]
+		],
+		"ResourceLoaderGetConfigVars": [
+			"CiteHooks::onResourceLoaderGetConfigVars"
+		],
+		"APIQuerySiteInfoGeneralInfo": "CiteHooks::onAPIQuerySiteInfoGeneralInfo"
 	},
 	"ResourceModules": {
 		"ext.cite.styles": {
@@ -51,7 +58,13 @@
 					"media": "print"
 				}
 			},
-			"position": "bottom"
+			"skinStyles": {
+				"minerva": "ext.cite.styles.minerva.less"
+			},
+			"targets": [
+				"desktop",
+				"mobile"
+			]
 		},
 		"ext.cite.a11y": {
 			"scripts": "ext.cite.a11y.js",
@@ -59,13 +72,11 @@
 			"messages": [
 				"cite_references_link_accessibility_label",
 				"cite_references_link_many_accessibility_label"
-			],
-			"position": "bottom"
+			]
 		},
 		"ext.cite.style": {
 			"class": "CiteCSSFileModule",
 			"styles": "ext.cite.style.css",
-			"position": "top",
 			"targets": [
 				"desktop",
 				"mobile"
@@ -83,23 +94,23 @@
 		"cite": "GlobalVarConfig::newInstance"
 	},
 	"config": {
-		"AllowCiteGroups": true,
-		"CiteCacheReferences": false,
 		"CiteStoreReferencesData": false,
-		"CiteCacheReferencesDataOnParse": false
+		"CiteCacheReferencesDataOnParse": false,
+		"CiteVisualEditorOtherGroup": false,
+		"CiteResponsiveReferences": true
 	},
 	"AutoloadClasses": {
-		"ApiQueryReferences": "ApiQueryReferences.php",
-		"Cite": "Cite_body.php",
-		"CiteHooks": "CiteHooks.php",
-		"CiteDataModule": "CiteDataModule.php",
-		"CiteCSSFileModule": "CiteCSSFileModule.php"
+		"ApiQueryReferences": "includes/ApiQueryReferences.php",
+		"Cite": "includes/Cite.php",
+		"CiteHooks": "includes/CiteHooks.php",
+		"CiteDataModule": "includes/CiteDataModule.php",
+		"CiteCSSFileModule": "includes/CiteCSSFileModule.php"
 	},
-	"ParserTestFiles": [
-		"citeParserTests.txt"
-	],
 	"TrackingCategories": [
 		"cite-tracking-category-cite-error"
 	],
+	"CodeMirrorTagModes": {
+		"ref": "text/mediawiki"
+	},
 	"manifest_version": 1
 }
