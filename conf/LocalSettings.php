@@ -153,8 +153,8 @@ wfLoadExtension( 'WikiEditor' );
 
 # Extensions not included in the defaut MediaWiki:
 require_once "$IP/extensions/Loops/Loops.php";
-require_once "$IP/extensions/PageInCat/PageInCat.php";
-require_once "$IP/extensions/Variables/Variables.php";
+wfLoadExtension( 'PageInCat' );
+wfLoadExtension( 'Variables' );
 
 # End of automatically generated settings.
 # Add more configuration options below.
