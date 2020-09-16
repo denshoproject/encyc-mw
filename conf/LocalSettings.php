@@ -159,3 +159,6 @@ wfLoadExtension( 'Variables' );
 # Add more configuration options below.
 
 $wgFileExtensions = array('gif','jpeg','jpg','mp4','pdf','png','tif','tiff');
+
+# Don't capitalize first letters of filenames and other links
+$wgCapitalLinks = false;
