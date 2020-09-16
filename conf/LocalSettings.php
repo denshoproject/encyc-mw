@@ -157,3 +157,5 @@ wfLoadExtension( 'Variables' );
 
 # End of automatically generated settings.
 # Add more configuration options below.
+
+$wgFileExtensions = array('gif','jpeg','jpg','mp4','pdf','png','tif','tiff');
