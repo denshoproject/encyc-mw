@@ -5,7 +5,7 @@
  *
  * Documentation: http://www.mediawiki.org/wiki/Extension:Loops
  * Support:       http://www.mediawiki.org/wiki/Extension_talk:Loops
- * Source code:   http://svn.wikimedia.org/viewvc/mediawiki/trunk/extensions/Loops
+ * Source code:   https://gerrit.wikimedia.org/r/#/admin/projects/mediawiki/extensions/Loops
  *
  * @license: GNU GPL v2 or higher
  * @author:  David M. Sledge
@@ -24,11 +24,11 @@ $wgExtensionCredits['parserhook'][] = array(
 	'version'        => ExtLoops::VERSION,
 	'descriptionmsg' => 'loops-desc',
 	'url'            => 'https://www.mediawiki.org/wiki/Extension:Loops',
+	'license-name'   => 'GPL-2.0-or-later',
 );
 
 // language files:
 $wgMessagesDirs['Loops'] = __DIR__ . '/i18n';
-$wgExtensionMessagesFiles['Loops'     ] = ExtLoops::getDir() . '/Loops.i18n.php';
 $wgExtensionMessagesFiles['LoopsMagic'] = ExtLoops::getDir() . '/Loops.i18n.magic.php';
 
 // hooks registration:
@@ -45,7 +45,7 @@ require_once ExtLoops::getDir() . '/Loops_Settings.php';
  * extension logic stuff.
  */
 class ExtLoops {
-	const VERSION = '0.5.0';
+	const VERSION = '0.5.1';
 
 	/**
 	 * Configuration variable defining maximum allowed number of loops ('-1' => no limit).
@@ -112,14 +112,13 @@ class ExtLoops {
 		}
 
 		$functionCallback = array( __CLASS__, 'pfObj_' . $name );
-		$parser->setFunctionHook( $name, $functionCallback, SFH_OBJECT_ARGS );
+		$parser->setFunctionHook( $name, $functionCallback, Parser::SFH_OBJECT_ARGS );
 	}
 
 
-	####################
-	# Parser Functions #
-	####################
-
+	/**
+	 * Parser functions
+	 */
 	public static function pfObj_while( Parser &$parser, $frame, $args ) {
 		return self::perform_while( $parser, $frame, $args, false );
 	}
@@ -213,7 +212,7 @@ class ExtLoops {
 	 * #fornumargs: | keyVarName | valVarName | code
 	 */
 	public static function pfObj_fornumargs( Parser &$parser, $frame, $args ) {
-		/*
+		/**
 		 * get numeric arguments, don't use PPFrame::getNumberedArguments because it would
 		 * return explicitely numbered arguments only.
 		 */
@@ -227,8 +226,10 @@ class ExtLoops {
 		ksort( $tNumArgs ); // sort from lowest to highest
 
 		if( count( $args ) > 3 ) {
-			// compatbility to pre 0.4 but consistency with other Loop functions.
-			// this way the first argument can be ommitted like '#fornumargs: |varKey |varVal |code'
+			/**
+			 *compatbility to pre 0.4 but consistency with other Loop functions.
+			 * this way the first argument can be ommitted like '#fornumargs: |varKey |varVal |code'
+			 */
 			array_shift( $args );
 		}
 
@@ -307,9 +308,9 @@ class ExtLoops {
 	}
 
 
-	###############
-	# Loops Count #
-	###############
+	/**
+	 * Loops count
+	 */
 
 	/**
 	 * Returns how many loops have been performed for a given Parser instance.
@@ -356,13 +357,13 @@ class ExtLoops {
 		if( trim( $output ) !== '' ) {
 			$output .= "\n";
 		}
-		return $output .= '<div class="error">' . wfMsgForContent( 'loops_max' ) . '</div>';
+		return $output .= '<div class="error">' . wfMessage( 'loops_max' )->inContentLanguage()->escaped() . '</div>';
 	}
 
 
-	##################
-	# Hooks handling #
-	##################
+	/**
+	 * Hooks handling
+	 */
 
 	public static function onParserClearState( Parser &$parser ) {
 		// reset loops counter since the parser process finished one page

@@ -23,21 +23,27 @@
 
 require_once __DIR__ . '/Maintenance.php';
 
-// @codingStandardsIgnoreStart MediaWiki.NamingConventions.ValidGlobalName.wgPrefix
-global $optionsWithArgs;
-// @codingStandardsIgnoreEnd
+// phpcs:ignore MediaWiki.NamingConventions.ValidGlobalName.wgPrefix
+global $optionsWithArgs, $optionsWithoutArgs;
+
 if ( !isset( $optionsWithArgs ) ) {
-	$optionsWithArgs = array();
+	$optionsWithArgs = [];
+}
+if ( !isset( $optionsWithoutArgs ) ) {
+	$optionsWithoutArgs = [];
 }
 
 class CommandLineInc extends Maintenance {
 	public function __construct() {
-		// @codingStandardsIgnoreStart MediaWiki.NamingConventions.ValidGlobalName.wgPrefix
-		global $optionsWithArgs;
-		// @codingStandardsIgnoreEnd
+		// phpcs:ignore MediaWiki.NamingConventions.ValidGlobalName.wgPrefix
+		global $optionsWithArgs, $optionsWithoutArgs;
+
 		parent::__construct();
 		foreach ( $optionsWithArgs as $name ) {
 			$this->addOption( $name, '', false, true );
+		}
+		foreach ( $optionsWithoutArgs as $name ) {
+			$this->addOption( $name, '', false, false );
 		}
 	}
 
@@ -53,14 +59,13 @@ class CommandLineInc extends Maintenance {
 	}
 
 	public function execute() {
-		// @codingStandardsIgnoreStart MediaWiki.NamingConventions.ValidGlobalName.wgPrefix
+		// phpcs:ignore MediaWiki.NamingConventions.ValidGlobalName.wgPrefix
 		global $args, $options;
-		// @codingStandardsIgnoreEnd
+
 		$args = $this->mArgs;
 		$options = $this->mOptions;
 	}
 }
 
-$maintClass = 'CommandLineInc';
+$maintClass = CommandLineInc::class;
 require RUN_MAINTENANCE_IF_MAIN;
-

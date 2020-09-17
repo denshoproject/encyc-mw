@@ -1,9 +1,5 @@
 <?php
 /**
- *
- *
- * Created on Oct 05, 2007
- *
  * Copyright © 2007 Yuri Astrakhan "<Firstname><Lastname>@gmail.com"
  *
  * This program is free software; you can redistribute it and/or modify
@@ -34,28 +30,55 @@
 class ApiExpandTemplates extends ApiBase {
 
 	public function execute() {
-		// Cache may vary on $wgUser because ParserOptions gets data from it
+		// Cache may vary on the user because ParserOptions gets data from it
 		$this->getMain()->setCacheMode( 'anon-public-user-private' );
 
 		// Get parameters
 		$params = $this->extractRequestParams();
 		$this->requireMaxOneParameter( $params, 'prop', 'generatexml' );
 
+		$title = $params['title'];
+		if ( $title === null ) {
+			$titleProvided = false;
+			// A title is needed for parsing, so arbitrarily choose one
+			$title = 'API';
+		} else {
+			$titleProvided = true;
+		}
+
 		if ( $params['prop'] === null ) {
-			$this->logFeatureUsage( 'action=expandtemplates&!prop' );
-			$this->setWarning( 'Because no values have been specified for the prop parameter, a ' .
-				'legacy format has been used for the output. This format is deprecated, and in ' .
-				'the future, a default value will be set for the prop parameter, causing the new' .
-				'format to always be used.' );
-			$prop = array();
+			$this->addDeprecation(
+				'apiwarn-deprecation-expandtemplates-prop', 'action=expandtemplates&!prop'
+			);
+			$prop = [];
 		} else {
 			$prop = array_flip( $params['prop'] );
 		}
 
-		// Create title for parser
-		$title_obj = Title::newFromText( $params['title'] );
-		if ( !$title_obj || $title_obj->isExternal() ) {
-			$this->dieUsageMsg( array( 'invalidtitle', $params['title'] ) );
+		$titleObj = Title::newFromText( $title );
+		if ( !$titleObj || $titleObj->isExternal() ) {
+			$this->dieWithError( [ 'apierror-invalidtitle', wfEscapeWikiText( $params['title'] ) ] );
+		}
+
+		// Get title and revision ID for parser
+		$revid = $params['revid'];
+		if ( $revid !== null ) {
+			$rev = Revision::newFromId( $revid );
+			if ( !$rev ) {
+				$this->dieWithError( [ 'apierror-nosuchrevid', $revid ] );
+			}
+			$pTitleObj = $titleObj;
+			$titleObj = $rev->getTitle();
+			if ( $titleProvided ) {
+				if ( !$titleObj->equals( $pTitleObj ) ) {
+					$this->addWarning( [ 'apierror-revwrongpage', $rev->getId(),
+						wfEscapeWikiText( $pTitleObj->getPrefixedText() ) ] );
+				}
+			} else {
+				// Consider the title derived from the revid as having
+				// been provided.
+				$titleProvided = true;
+			}
 		}
 
 		$result = $this->getResult();
@@ -68,16 +91,17 @@ class ApiExpandTemplates extends ApiBase {
 			$options->setRemoveComments( false );
 		}
 
-		$retval = array();
+		$reset = null;
+		$suppressCache = false;
+		Hooks::run( 'ApiMakeParserOptions',
+			[ $options, $titleObj, $params, $this, &$reset, &$suppressCache ] );
+
+		$retval = [];
 
 		if ( isset( $prop['parsetree'] ) || $params['generatexml'] ) {
-			if ( !isset( $prop['parsetree'] ) ) {
-				$this->logFeatureUsage( 'action=expandtemplates&generatexml' );
-			}
-
-			$wgParser->startExternalParse( $title_obj, $options, OT_PREPROCESS );
+			$wgParser->startExternalParse( $titleObj, $options, Parser::OT_PREPROCESS );
 			$dom = $wgParser->preprocessToDom( $params['text'] );
-			if ( is_callable( array( $dom, 'saveXML' ) ) ) {
+			if ( is_callable( [ $dom, 'saveXML' ] ) ) {
 				$xml = $dom->saveXML();
 			} else {
 				$xml = $dom->__toString();
@@ -87,38 +111,46 @@ class ApiExpandTemplates extends ApiBase {
 				$retval['parsetree'] = $xml;
 			} else {
 				// the old way
-				$xml_result = array();
-				ApiResult::setContent( $xml_result, $xml );
-				$result->addValue( null, 'parsetree', $xml_result );
+				$result->addValue( null, 'parsetree', $xml );
+				$result->addValue( null, ApiResult::META_BC_SUBELEMENTS, [ 'parsetree' ] );
 			}
 		}
 
 		// if they didn't want any output except (probably) the parse tree,
 		// then don't bother actually fully expanding it
 		if ( $prop || $params['prop'] === null ) {
-			$wgParser->startExternalParse( $title_obj, $options, OT_PREPROCESS );
+			$wgParser->startExternalParse( $titleObj, $options, Parser::OT_PREPROCESS );
 			$frame = $wgParser->getPreprocessor()->newFrame();
-			$wikitext = $wgParser->preprocess( $params['text'], $title_obj, $options, null, $frame );
+			$wikitext = $wgParser->preprocess( $params['text'], $titleObj, $options, $revid, $frame );
 			if ( $params['prop'] === null ) {
 				// the old way
-				ApiResult::setContent( $retval, $wikitext );
+				ApiResult::setContentValue( $retval, 'wikitext', $wikitext );
 			} else {
+				$p_output = $wgParser->getOutput();
 				if ( isset( $prop['categories'] ) ) {
-					$categories = $wgParser->getOutput()->getCategories();
-					if ( !empty( $categories ) ) {
-						$categories_result = array();
+					$categories = $p_output->getCategories();
+					if ( $categories ) {
+						$categories_result = [];
 						foreach ( $categories as $category => $sortkey ) {
-							$entry = array();
+							$entry = [];
 							$entry['sortkey'] = $sortkey;
-							ApiResult::setContent( $entry, $category );
+							ApiResult::setContentValue( $entry, 'category', (string)$category );
 							$categories_result[] = $entry;
 						}
-						$result->setIndexedTagName( $categories_result, 'category' );
+						ApiResult::setIndexedTagName( $categories_result, 'category' );
 						$retval['categories'] = $categories_result;
 					}
 				}
-				if ( isset( $prop['volatile'] ) && $frame->isVolatile() ) {
-					$retval['volatile'] = '';
+				if ( isset( $prop['properties'] ) ) {
+					$properties = $p_output->getProperties();
+					if ( $properties ) {
+						ApiResult::setArrayType( $properties, 'BCkvp', 'name' );
+						ApiResult::setIndexedTagName( $properties, 'property' );
+						$retval['properties'] = $properties;
+					}
+				}
+				if ( isset( $prop['volatile'] ) ) {
+					$retval['volatile'] = $frame->isVolatile();
 				}
 				if ( isset( $prop['ttl'] ) && $frame->getTTL() !== null ) {
 					$retval['ttl'] = $frame->getTTL();
@@ -126,72 +158,72 @@ class ApiExpandTemplates extends ApiBase {
 				if ( isset( $prop['wikitext'] ) ) {
 					$retval['wikitext'] = $wikitext;
 				}
+				if ( isset( $prop['modules'] ) ) {
+					$retval['modules'] = array_values( array_unique( $p_output->getModules() ) );
+					$retval['modulescripts'] = array_values( array_unique( $p_output->getModuleScripts() ) );
+					$retval['modulestyles'] = array_values( array_unique( $p_output->getModuleStyles() ) );
+				}
+				if ( isset( $prop['jsconfigvars'] ) ) {
+					$retval['jsconfigvars'] =
+						ApiResult::addMetadataToResultVars( $p_output->getJsConfigVars() );
+				}
+				if ( isset( $prop['encodedjsconfigvars'] ) ) {
+					$retval['encodedjsconfigvars'] = FormatJson::encode(
+						$p_output->getJsConfigVars(), false, FormatJson::ALL_OK
+					);
+					$retval[ApiResult::META_SUBELEMENTS][] = 'encodedjsconfigvars';
+				}
+				if ( isset( $prop['modules'] ) &&
+					!isset( $prop['jsconfigvars'] ) && !isset( $prop['encodedjsconfigvars'] ) ) {
+					$this->addWarning( 'apiwarn-moduleswithoutvars' );
+				}
 			}
 		}
-		$result->setSubelements( $retval, array( 'wikitext', 'parsetree' ) );
+		ApiResult::setSubelementsList( $retval, [ 'wikitext', 'parsetree' ] );
 		$result->addValue( null, $this->getModuleName(), $retval );
 	}
 
 	public function getAllowedParams() {
-		return array(
-			'title' => array(
-				ApiBase::PARAM_DFLT => 'API',
-			),
-			'text' => array(
-				ApiBase::PARAM_TYPE => 'string',
+		return [
+			'title' => null,
+			'text' => [
+				ApiBase::PARAM_TYPE => 'text',
 				ApiBase::PARAM_REQUIRED => true,
-			),
-			'prop' => array(
-				ApiBase::PARAM_TYPE => array(
+			],
+			'revid' => [
+				ApiBase::PARAM_TYPE => 'integer',
+			],
+			'prop' => [
+				ApiBase::PARAM_TYPE => [
 					'wikitext',
 					'categories',
+					'properties',
 					'volatile',
 					'ttl',
+					'modules',
+					'jsconfigvars',
+					'encodedjsconfigvars',
 					'parsetree',
-				),
+				],
 				ApiBase::PARAM_ISMULTI => true,
-			),
+				ApiBase::PARAM_HELP_MSG_PER_VALUE => [],
+			],
 			'includecomments' => false,
-			'generatexml' => array(
+			'generatexml' => [
 				ApiBase::PARAM_TYPE => 'boolean',
 				ApiBase::PARAM_DEPRECATED => true,
-			),
-		);
+			],
+		];
 	}
 
-	public function getParamDescription() {
-		return array(
-			'text' => 'Wikitext to convert',
-			'title' => 'Title of page',
-			'prop' => array(
-				'Which pieces of information to get',
-				' wikitext   - The expanded wikitext',
-				' categories - Any categories present in the input that are not represented in ' .
-					'the wikitext output',
-				' volatile   - Whether the output is volatile and should not be reused ' .
-					'elsewhere within the page',
-				' ttl        - The maximum time after which caches of the result should be ' .
-					'invalidated',
-				' parsetree  - The XML parse tree of the input',
-				'Note that if no values are selected, the result will contain the wikitext,',
-				'but the output will be in a deprecated format.',
-			),
-			'includecomments' => 'Whether to include HTML comments in the output',
-			'generatexml' => 'Generate XML parse tree (replaced by prop=parsetree)',
-		);
-	}
-
-	public function getDescription() {
-		return 'Expands all templates in wikitext.';
-	}
-
-	public function getExamples() {
-		return array(
-			'api.php?action=expandtemplates&text={{Project:Sandbox}}'
-		);
+	protected function getExamplesMessages() {
+		return [
+			'action=expandtemplates&text={{Project:Sandbox}}'
+				=> 'apihelp-expandtemplates-example-simple',
+		];
 	}
 
 	public function getHelpUrls() {
-		return 'https://www.mediawiki.org/wiki/API:Parsing_wikitext#expandtemplates';
+		return 'https://www.mediawiki.org/wiki/Special:MyLanguage/API:Parsing_wikitext#expandtemplates';
 	}
 }

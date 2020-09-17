@@ -28,7 +28,6 @@
  *
  * These are synonyms for the names given in the language file
  * Users and translators should not change them
- *
  */
 class MWNamespace {
 
@@ -37,7 +36,16 @@ class MWNamespace {
 	 * forevermore. Historically, they could've probably been lowercased too,
 	 * but some things are just too ingrained now. :)
 	 */
-	private static $alwaysCapitalizedNamespaces = array( NS_SPECIAL, NS_USER, NS_MEDIAWIKI );
+	private static $alwaysCapitalizedNamespaces = [ NS_SPECIAL, NS_USER, NS_MEDIAWIKI ];
+
+	/** @var string[]|null Canonical namespaces cache */
+	private static $canonicalNamespaces = null;
+
+	/** @var array|false Canonical namespaces index cache */
+	private static $namespaceIndexes = false;
+
+	/** @var int[]|null Valid namespaces cache */
+	private static $validNamespaces = null;
 
 	/**
 	 * Throw an exception when trying to get the subject or talk page
@@ -59,6 +67,19 @@ class MWNamespace {
 	}
 
 	/**
+	 * Clear internal caches
+	 *
+	 * For use in unit testing when namespace configuration is changed.
+	 *
+	 * @since 1.31
+	 */
+	public static function clearCaches() {
+		self::$canonicalNamespaces = null;
+		self::$namespaceIndexes = false;
+		self::$validNamespaces = null;
+	}
+
+	/**
 	 * Can pages in the given namespace be moved?
 	 *
 	 * @param int $index Namespace index
@@ -72,7 +93,7 @@ class MWNamespace {
 		/**
 		 * @since 1.20
 		 */
-		wfRunHooks( 'NamespaceIsMovable', array( $index, &$result ) );
+		Hooks::run( 'NamespaceIsMovable', [ $index, &$result ] );
 
 		return $result;
 	}
@@ -201,21 +222,28 @@ class MWNamespace {
 	 * (English) names.
 	 *
 	 * @param bool $rebuild Rebuild namespace list (default = false). Used for testing.
+	 *  Deprecated since 1.31, use self::clearCaches() instead.
 	 *
 	 * @return array
 	 * @since 1.17
 	 */
 	public static function getCanonicalNamespaces( $rebuild = false ) {
-		static $namespaces = null;
-		if ( $namespaces === null || $rebuild ) {
-			global $wgExtraNamespaces, $wgCanonicalNamespaceNames;
-			$namespaces = array( NS_MAIN => '' ) + $wgCanonicalNamespaceNames;
-			if ( is_array( $wgExtraNamespaces ) ) {
-				$namespaces += $wgExtraNamespaces;
-			}
-			wfRunHooks( 'CanonicalNamespaces', array( &$namespaces ) );
+		if ( $rebuild ) {
+			self::clearCaches();
 		}
-		return $namespaces;
+
+		if ( self::$canonicalNamespaces === null ) {
+			global $wgExtraNamespaces, $wgCanonicalNamespaceNames;
+			self::$canonicalNamespaces = [ NS_MAIN => '' ] + $wgCanonicalNamespaceNames;
+			// Add extension namespaces
+			self::$canonicalNamespaces +=
+				ExtensionRegistry::getInstance()->getAttribute( 'ExtensionNamespaces' );
+			if ( is_array( $wgExtraNamespaces ) ) {
+				self::$canonicalNamespaces += $wgExtraNamespaces;
+			}
+			Hooks::run( 'CanonicalNamespaces', [ &self::$canonicalNamespaces ] );
+		}
+		return self::$canonicalNamespaces;
 	}
 
 	/**
@@ -241,15 +269,14 @@ class MWNamespace {
 	 * @return int
 	 */
 	public static function getCanonicalIndex( $name ) {
-		static $xNamespaces = false;
-		if ( $xNamespaces === false ) {
-			$xNamespaces = array();
+		if ( self::$namespaceIndexes === false ) {
+			self::$namespaceIndexes = [];
 			foreach ( self::getCanonicalNamespaces() as $i => $text ) {
-				$xNamespaces[strtolower( $text )] = $i;
+				self::$namespaceIndexes[strtolower( $text )] = $i;
 			}
 		}
-		if ( array_key_exists( $name, $xNamespaces ) ) {
-			return $xNamespaces[$name];
+		if ( array_key_exists( $name, self::$namespaceIndexes ) ) {
+			return self::$namespaceIndexes[$name];
 		} else {
 			return null;
 		}
@@ -261,26 +288,40 @@ class MWNamespace {
 	 * @return array
 	 */
 	public static function getValidNamespaces() {
-		static $mValidNamespaces = null;
-
-		if ( is_null( $mValidNamespaces ) ) {
+		if ( is_null( self::$validNamespaces ) ) {
 			foreach ( array_keys( self::getCanonicalNamespaces() ) as $ns ) {
 				if ( $ns >= 0 ) {
-					$mValidNamespaces[] = $ns;
+					self::$validNamespaces[] = $ns;
 				}
 			}
+			// T109137: sort numerically
+			sort( self::$validNamespaces, SORT_NUMERIC );
 		}
 
-		return $mValidNamespaces;
+		return self::$validNamespaces;
 	}
 
 	/**
-	 * Can this namespace ever have a talk namespace?
+	 * Does this namespace ever have a talk namespace?
+	 *
+	 * @deprecated since 1.30, use hasTalkNamespace() instead.
 	 *
 	 * @param int $index Namespace index
-	 * @return bool
+	 * @return bool True if this namespace either is or has a corresponding talk namespace.
 	 */
 	public static function canTalk( $index ) {
+		return self::hasTalkNamespace( $index );
+	}
+
+	/**
+	 * Does this namespace ever have a talk namespace?
+	 *
+	 * @since 1.30
+	 *
+	 * @param int $index Namespace ID
+	 * @return bool True if this namespace either is or has a corresponding talk namespace.
+	 */
+	public static function hasTalkNamespace( $index ) {
 		return $index >= NS_MAIN;
 	}
 
@@ -294,6 +335,18 @@ class MWNamespace {
 	public static function isContent( $index ) {
 		global $wgContentNamespaces;
 		return $index == NS_MAIN || in_array( $index, $wgContentNamespaces );
+	}
+
+	/**
+	 * Might pages in this namespace require the use of the Signature button on
+	 * the edit toolbar?
+	 *
+	 * @param int $index Index to check
+	 * @return bool
+	 */
+	public static function wantSignatures( $index ) {
+		global $wgExtraSignatureNamespaces;
+		return self::isTalk( $index ) || in_array( $index, $wgExtraSignatureNamespaces );
 	}
 
 	/**
@@ -323,11 +376,11 @@ class MWNamespace {
 	 */
 	public static function getContentNamespaces() {
 		global $wgContentNamespaces;
-		if ( !is_array( $wgContentNamespaces ) || $wgContentNamespaces === array() ) {
-			return array( NS_MAIN );
+		if ( !is_array( $wgContentNamespaces ) || $wgContentNamespaces === [] ) {
+			return [ NS_MAIN ];
 		} elseif ( !in_array( NS_MAIN, $wgContentNamespaces ) ) {
 			// always force NS_MAIN to be part of array (to match the algorithm used by isContent)
-			return array_merge( array( NS_MAIN ), $wgContentNamespaces );
+			return array_merge( [ NS_MAIN ], $wgContentNamespaces );
 		} else {
 			return $wgContentNamespaces;
 		}
@@ -341,7 +394,7 @@ class MWNamespace {
 	 */
 	public static function getSubjectNamespaces() {
 		return array_filter(
-			MWNamespace::getValidNamespaces(),
+			self::getValidNamespaces(),
 			'MWNamespace::isSubject'
 		);
 	}
@@ -354,7 +407,7 @@ class MWNamespace {
 	 */
 	public static function getTalkNamespaces() {
 		return array_filter(
-			MWNamespace::getValidNamespaces(),
+			self::getValidNamespaces(),
 			'MWNamespace::isTalk'
 		);
 	}
@@ -456,7 +509,7 @@ class MWNamespace {
 		}
 
 		// First, get the list of groups that can edit this namespace.
-		$namespaceGroups = array();
+		$namespaceGroups = [];
 		$combine = 'array_merge';
 		foreach ( (array)$wgNamespaceProtection[$index] as $right ) {
 			if ( $right == 'sysop' ) {
@@ -475,7 +528,7 @@ class MWNamespace {
 		// Now, keep only those restriction levels where there is at least one
 		// group that can edit the namespace but would be blocked by the
 		// restriction.
-		$usableLevels = array( '' );
+		$usableLevels = [ '' ];
 		foreach ( $wgRestrictionLevels as $level ) {
 			$right = $level;
 			if ( $right == 'sysop' ) {

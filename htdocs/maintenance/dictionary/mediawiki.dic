@@ -433,7 +433,6 @@ aiff
 aiprop
 airtel
 aisort
-ajaxwatch
 al
 alefsym
 algo
@@ -539,11 +538,8 @@ asctime
 asdf
 aspx
 assert
-astriks
 asymp
 async
-asynccopyuploaddisabled
-asyncdownload
 at
 atend
 atext
@@ -1040,7 +1036,6 @@ csrf
 css
 cssclass
 csslinks
-cssprefs
 cta
 ctime
 ctor
@@ -1327,7 +1322,6 @@ edittoken
 edittools
 editurl
 editusercss
-editusercssjs
 edituserjs
 edoe
 egrave
@@ -1403,7 +1397,6 @@ epcampus
 epcoordinator
 epinstructor
 eponline
-eqiad
 erevoke
 errno
 error
@@ -1434,6 +1427,7 @@ excludepage
 excludeuser
 executables
 exempt
+exiftool
 existingwiki
 exists
 exiv
@@ -1811,7 +1805,6 @@ historysubmit
 historywarning
 hit
 hitcount
-hitcounter
 hits
 hlist
 hmac
@@ -2034,7 +2027,6 @@ isminor
 ismodsince
 ismulti
 isnew
-ispermalink
 isroot
 isself
 isset
@@ -2152,7 +2144,6 @@ lcount
 lcrocker
 ldquo
 le
-leavemessage
 len
 length
 leprop
@@ -2248,7 +2239,6 @@ logextract
 loggedin
 logid
 login
-loginend
 loginerror
 loginfo
 loginlanguagelinks
@@ -2259,7 +2249,6 @@ loginreqlink
 loginreqpagetext
 loginreqtitle
 logins
-loginstart
 logitem
 loglink
 loglist
@@ -2901,7 +2890,6 @@ numberofedits
 numberoffiles
 numberofpages
 numberofusers
-numberofviews
 numberofwatchingusers
 numedits
 numentries
@@ -3004,9 +2992,6 @@ outreachwiki
 over
 overridable
 override
-oversight
-oversighted
-oversighter
 overwrite
 overwroteimage
 own
@@ -3162,7 +3147,6 @@ pnmtopng
 pointsize
 poolcounter
 popts
-popularpages
 portlet
 portlets
 posplus
@@ -3196,7 +3180,7 @@ prefixsearchdisabled
 prefs
 prefsection
 prefsnologintext2
-prefsubmit
+prefcontrol
 preload
 preloads
 preloadtitle
@@ -4248,8 +4232,6 @@ unmakesafe
 unmark
 unmerge
 unmodified
-unoversight
-unoversighted
 unpadded
 unpatrolled
 unpatrolledletter
@@ -4517,7 +4499,7 @@ what
 whatlinkshere
 whatwg
 wheely
-wheter
+whether
 whitelist
 whitelisted
 whitelistedittext
@@ -4586,7 +4568,6 @@ wmls
 wmlsc
 wmlscript
 wmlscriptc
-wmnet
 wordcount
 wordprocessingml
 wordwg
@@ -4603,7 +4584,6 @@ wrongpassword
 x
 xanalytics
 xbitmap
-xcache
 xcancel
 xdebug
 xdiff

@@ -63,11 +63,8 @@ class ArchivedFile {
 	/** @var string Upload description */
 	private $description;
 
-	/** @var int User ID of uploader */
+	/** @var User|null Uploader */
 	private $user;
-
-	/** @var string User name of uploader */
-	private $user_text;
 
 	/** @var string Time of upload */
 	private $timestamp;
@@ -81,7 +78,7 @@ class ArchivedFile {
 	/** @var string SHA-1 hash of file content */
 	private $sha1;
 
-	/** @var string Number of pages of a multipage document, or false for
+	/** @var int|false Number of pages of a multipage document, or false for
 	 * documents which aren't multipage documents
 	 */
 	private $pageCount;
@@ -100,8 +97,9 @@ class ArchivedFile {
 	 * @param Title $title
 	 * @param int $id
 	 * @param string $key
+	 * @param string $sha1
 	 */
-	function __construct( $title, $id = 0, $key = '' ) {
+	function __construct( $title, $id = 0, $key = '', $sha1 = '' ) {
 		$this->id = -1;
 		$this->title = false;
 		$this->name = false;
@@ -115,8 +113,7 @@ class ArchivedFile {
 		$this->mime = "unknown/unknown";
 		$this->media_type = '';
 		$this->description = '';
-		$this->user = 0;
-		$this->user_text = '';
+		$this->user = null;
 		$this->timestamp = null;
 		$this->deleted = 0;
 		$this->dataLoaded = false;
@@ -136,7 +133,11 @@ class ArchivedFile {
 			$this->key = $key;
 		}
 
-		if ( !$id && !$key && !( $title instanceof Title ) ) {
+		if ( $sha1 ) {
+			$this->sha1 = $sha1;
+		}
+
+		if ( !$id && !$key && !( $title instanceof Title ) && !$sha1 ) {
 			throw new MWException( "No specifications provided to ArchivedFile constructor." );
 		}
 	}
@@ -150,7 +151,7 @@ class ArchivedFile {
 		if ( $this->dataLoaded ) {
 			return true;
 		}
-		$conds = array();
+		$conds = [];
 
 		if ( $this->id > 0 ) {
 			$conds['fa_id'] = $this->id;
@@ -162,6 +163,9 @@ class ArchivedFile {
 		if ( $this->title ) {
 			$conds['fa_name'] = $this->title->getDBkey();
 		}
+		if ( $this->sha1 ) {
+			$conds['fa_sha1'] = $this->sha1;
+		}
 
 		if ( !count( $conds ) ) {
 			throw new MWException( "No specific information for retrieving archived file" );
@@ -169,13 +173,15 @@ class ArchivedFile {
 
 		if ( !$this->title || $this->title->getNamespace() == NS_FILE ) {
 			$this->dataLoaded = true; // set it here, to have also true on miss
-			$dbr = wfGetDB( DB_SLAVE );
+			$dbr = wfGetDB( DB_REPLICA );
+			$fileQuery = self::getQueryInfo();
 			$row = $dbr->selectRow(
-				'filearchive',
-				self::selectFields(),
+				$fileQuery['tables'],
+				$fileQuery['fields'],
 				$conds,
 				__METHOD__,
-				array( 'ORDER BY' => 'fa_timestamp DESC' )
+				[ 'ORDER BY' => 'fa_timestamp DESC' ],
+				$fileQuery['joins']
 			);
 			if ( !$row ) {
 				// this revision does not exist?
@@ -207,10 +213,24 @@ class ArchivedFile {
 
 	/**
 	 * Fields in the filearchive table
-	 * @return array
+	 * @deprecated since 1.31, use self::getQueryInfo() instead.
+	 * @return string[]
 	 */
 	static function selectFields() {
-		return array(
+		global $wgActorTableSchemaMigrationStage;
+
+		if ( $wgActorTableSchemaMigrationStage > MIGRATION_WRITE_BOTH ) {
+			// If code is using this instead of self::getQueryInfo(), there's a
+			// decent chance it's going to try to directly access
+			// $row->fa_user or $row->fa_user_text and we can't give it
+			// useful values here once those aren't being written anymore.
+			throw new BadMethodCallException(
+				'Cannot use ' . __METHOD__ . ' when $wgActorTableSchemaMigrationStage > MIGRATION_WRITE_BOTH'
+			);
+		}
+
+		wfDeprecated( __METHOD__, '1.31' );
+		return [
 			'fa_id',
 			'fa_name',
 			'fa_archive_name',
@@ -224,14 +244,51 @@ class ArchivedFile {
 			'fa_media_type',
 			'fa_major_mime',
 			'fa_minor_mime',
-			'fa_description',
 			'fa_user',
 			'fa_user_text',
+			'fa_actor' => $wgActorTableSchemaMigrationStage > MIGRATION_OLD ? 'fa_actor' : 'NULL',
 			'fa_timestamp',
 			'fa_deleted',
 			'fa_deleted_timestamp', /* Used by LocalFileRestoreBatch */
 			'fa_sha1',
-		);
+		] + CommentStore::getStore()->getFields( 'fa_description' );
+	}
+
+	/**
+	 * Return the tables, fields, and join conditions to be selected to create
+	 * a new archivedfile object.
+	 * @since 1.31
+	 * @return array[] With three keys:
+	 *   - tables: (string[]) to include in the `$table` to `IDatabase->select()`
+	 *   - fields: (string[]) to include in the `$vars` to `IDatabase->select()`
+	 *   - joins: (array) to include in the `$join_conds` to `IDatabase->select()`
+	 */
+	public static function getQueryInfo() {
+		$commentQuery = CommentStore::getStore()->getJoin( 'fa_description' );
+		$actorQuery = ActorMigration::newMigration()->getJoin( 'fa_user' );
+		return [
+			'tables' => [ 'filearchive' ] + $commentQuery['tables'] + $actorQuery['tables'],
+			'fields' => [
+				'fa_id',
+				'fa_name',
+				'fa_archive_name',
+				'fa_storage_key',
+				'fa_storage_group',
+				'fa_size',
+				'fa_bits',
+				'fa_width',
+				'fa_height',
+				'fa_metadata',
+				'fa_media_type',
+				'fa_major_mime',
+				'fa_minor_mime',
+				'fa_timestamp',
+				'fa_deleted',
+				'fa_deleted_timestamp', /* Used by LocalFileRestoreBatch */
+				'fa_sha1',
+			] + $commentQuery['fields'] + $actorQuery['fields'],
+			'joins' => $commentQuery['joins'] + $actorQuery['joins'],
+		];
 	}
 
 	/**
@@ -253,9 +310,10 @@ class ArchivedFile {
 		$this->metadata = $row->fa_metadata;
 		$this->mime = "$row->fa_major_mime/$row->fa_minor_mime";
 		$this->media_type = $row->fa_media_type;
-		$this->description = $row->fa_description;
-		$this->user = $row->fa_user;
-		$this->user_text = $row->fa_user_text;
+		$this->description = CommentStore::getStore()
+			// Legacy because $row may have come from self::selectFields()
+			->getCommentLegacy( wfGetDB( DB_REPLICA ), 'fa_description', $row )->text;
+		$this->user = User::newFromAnyId( $row->fa_user, $row->fa_user_text, $row->fa_actor );
 		$this->timestamp = $row->fa_timestamp;
 		$this->deleted = $row->fa_deleted;
 		if ( isset( $row->fa_sha1 ) ) {
@@ -417,6 +475,7 @@ class ArchivedFile {
 	 */
 	function pageCount() {
 		if ( !isset( $this->pageCount ) ) {
+			// @FIXME: callers expect File objects
 			if ( $this->getHandler() && $this->handler->isMultiPage( $this ) ) {
 				$this->pageCount = $this->handler->pageCount( $this );
 			} else {
@@ -467,42 +526,29 @@ class ArchivedFile {
 	 * @note Prior to MediaWiki 1.23, this method always
 	 *   returned the user id, and was inconsistent with
 	 *   the rest of the file classes.
-	 * @param string $type 'text' or 'id'
-	 * @return int|string
+	 * @param string $type 'text', 'id', or 'object'
+	 * @return int|string|User|null
 	 * @throws MWException
+	 * @since 1.31 added 'object'
 	 */
 	public function getUser( $type = 'text' ) {
 		$this->load();
 
-		if ( $type == 'text' ) {
-			return $this->user_text;
-		} elseif ( $type == 'id' ) {
+		if ( $type === 'object' ) {
 			return $this->user;
+		} elseif ( $type === 'text' ) {
+			return $this->user ? $this->user->getName() : '';
+		} elseif ( $type === 'id' ) {
+			return $this->user ? $this->user->getId() : 0;
 		}
 
 		throw new MWException( "Unknown type '$type'." );
 	}
 
 	/**
-	 * Return the user name of the uploader.
-	 *
-	 * @deprecated since 1.23 Use getUser( 'text' ) instead.
-	 * @return string
-	 */
-	public function getUserText() {
-		wfDeprecated( __METHOD__, '1.23' );
-		$this->load();
-		if ( $this->isDeleted( File::DELETED_USER ) ) {
-			return 0;
-		} else {
-			return $this->user_text;
-		}
-	}
-
-	/**
 	 * Return upload description.
 	 *
-	 * @return string
+	 * @return string|int
 	 */
 	public function getDescription() {
 		$this->load();
@@ -519,9 +565,7 @@ class ArchivedFile {
 	 * @return int
 	 */
 	public function getRawUser() {
-		$this->load();
-
-		return $this->user;
+		return $this->getUser( 'id' );
 	}
 
 	/**
@@ -530,9 +574,7 @@ class ArchivedFile {
 	 * @return string
 	 */
 	public function getRawUserText() {
-		$this->load();
-
-		return $this->user_text;
+		return $this->getUser( 'text' );
 	}
 
 	/**
@@ -579,6 +621,6 @@ class ArchivedFile {
 		$this->load();
 
 		$title = $this->getTitle();
-		return Revision::userCanBitfield( $this->deleted, $field, $user, $title ? : null );
+		return Revision::userCanBitfield( $this->deleted, $field, $user, $title ?: null );
 	}
 }

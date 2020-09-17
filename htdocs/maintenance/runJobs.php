@@ -23,6 +23,11 @@
 
 require_once __DIR__ . '/Maintenance.php';
 
+use MediaWiki\Logger\LoggerFactory;
+
+// So extensions (and other code) can check whether they're running in job mode
+define( 'MEDIAWIKI_JOB_RUNNER', true );
+
 /**
  * Maintenance script that runs pending jobs.
  *
@@ -31,13 +36,14 @@ require_once __DIR__ . '/Maintenance.php';
 class RunJobs extends Maintenance {
 	public function __construct() {
 		parent::__construct();
-		$this->mDescription = "Run pending jobs";
+		$this->addDescription( 'Run pending jobs' );
 		$this->addOption( 'maxjobs', 'Maximum number of jobs to run', false, true );
 		$this->addOption( 'maxtime', 'Maximum amount of wall-clock time', false, true );
 		$this->addOption( 'type', 'Type of job to run', false, true );
 		$this->addOption( 'procs', 'Number of processes to use', false, true );
 		$this->addOption( 'nothrottle', 'Ignore job throttling configuration', false, false );
-		$this->addOption( 'result', 'Set to JSON to print only a JSON response', false, true );
+		$this->addOption( 'result', 'Set to "json" to print only a JSON response', false, true );
+		$this->addOption( 'wait', 'Wait for new jobs instead of exiting', false, false );
 	}
 
 	public function memoryLimit() {
@@ -50,14 +56,10 @@ class RunJobs extends Maintenance {
 	}
 
 	public function execute() {
-		if ( wfReadOnly() ) {
-			$this->error( "Unable to run jobs; the wiki is in read-only mode.", 1 ); // die
-		}
-
 		if ( $this->hasOption( 'procs' ) ) {
 			$procs = intval( $this->getOption( 'procs' ) );
 			if ( $procs < 1 || $procs > 1000 ) {
-				$this->error( "Invalid argument to --procs", true );
+				$this->fatalError( "Invalid argument to --procs" );
 			} elseif ( $procs != 1 ) {
 				$fc = new ForkController( $procs );
 				if ( $fc->start() != 'child' ) {
@@ -66,20 +68,45 @@ class RunJobs extends Maintenance {
 			}
 		}
 
-		$json = ( $this->getOption( 'result' ) === 'json' );
+		$outputJSON = ( $this->getOption( 'result' ) === 'json' );
+		$wait = $this->hasOption( 'wait' );
 
-		$runner = new JobRunner();
-		if ( !$json ) {
-			$runner->setDebugHandler( array( $this, 'debugInternal' ) );
+		$runner = new JobRunner( LoggerFactory::getInstance( 'runJobs' ) );
+		if ( !$outputJSON ) {
+			$runner->setDebugHandler( [ $this, 'debugInternal' ] );
 		}
-		$response = $runner->run( array(
-			'type'     => $this->getOption( 'type', false ),
-			'maxJobs'  => $this->getOption( 'maxjobs', false ),
-			'maxTime'  => $this->getOption( 'maxtime', false ),
-			'throttle' => $this->hasOption( 'nothrottle' ) ? false : true,
-		) );
-		if ( $json ) {
-			$this->output( FormatJson::encode( $response, true ) );
+
+		$type = $this->getOption( 'type', false );
+		$maxJobs = $this->getOption( 'maxjobs', false );
+		$maxTime = $this->getOption( 'maxtime', false );
+		$throttle = !$this->hasOption( 'nothrottle' );
+
+		while ( true ) {
+			$response = $runner->run( [
+				'type'     => $type,
+				'maxJobs'  => $maxJobs,
+				'maxTime'  => $maxTime,
+				'throttle' => $throttle,
+			] );
+
+			if ( $outputJSON ) {
+				$this->output( FormatJson::encode( $response, true ) );
+			}
+
+			if (
+				!$wait ||
+				$response['reached'] === 'time-limit' ||
+				$response['reached'] === 'job-limit' ||
+				$response['reached'] === 'memory-limit'
+			) {
+				break;
+			}
+
+			if ( $maxJobs !== false ) {
+				$maxJobs -= count( $response['jobs'] );
+			}
+
+			sleep( 1 );
 		}
 	}
 
@@ -91,5 +118,5 @@ class RunJobs extends Maintenance {
 	}
 }
 
-$maintClass = "RunJobs";
+$maintClass = RunJobs::class;
 require_once RUN_MAINTENANCE_IF_MAIN;

@@ -21,13 +21,15 @@
 
 require_once __DIR__ . '/Maintenance.php';
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * @ingroup Maintenance
  */
 class CompareParserCache extends Maintenance {
 	public function __construct() {
 		parent::__construct();
-		$this->mDescription = "Parse random pages and compare output to cache.";
+		$this->addDescription( 'Parse random pages and compare output to cache.' );
 		$this->addOption( 'namespace', 'Page namespace number', true, true );
 		$this->addOption( 'maxpages', 'Number of pages to try', true, true );
 	}
@@ -35,23 +37,29 @@ class CompareParserCache extends Maintenance {
 	public function execute() {
 		$pages = $this->getOption( 'maxpages' );
 
-		$dbr = $this->getDB( DB_SLAVE );
+		$dbr = $this->getDB( DB_REPLICA );
 
 		$totalsec = 0.0;
 		$scanned = 0;
 		$withcache = 0;
 		$withdiff = 0;
+		$parserCache = MediaWikiServices::getInstance()->getParserCache();
 		while ( $pages-- > 0 ) {
-			$row = $dbr->selectRow( 'page', '*',
-				array(
+			$row = $dbr->selectRow( 'page',
+				// @todo Title::selectFields() or Title::getQueryInfo() or something
+				[
+					'page_namespace', 'page_title', 'page_id',
+					'page_len', 'page_is_redirect', 'page_latest',
+				],
+				[
 					'page_namespace' => $this->getOption( 'namespace' ),
 					'page_is_redirect' => 0,
 					'page_random >= ' . wfRandom()
-				),
+				],
 				__METHOD__,
-				array(
+				[
 					'ORDER BY' => 'page_random',
-				)
+				]
 			);
 
 			if ( !$row ) {
@@ -66,7 +74,7 @@ class CompareParserCache extends Maintenance {
 
 			$parserOptions = $page->makeParserOptions( 'canonical' );
 
-			$parserOutputOld = ParserCache::singleton()->get( $page, $parserOptions );
+			$parserOutputOld = $parserCache->get( $page, $parserOptions );
 
 			if ( $parserOutputOld ) {
 				$t1 = microtime( true );
@@ -100,5 +108,5 @@ class CompareParserCache extends Maintenance {
 	}
 }
 
-$maintClass = "CompareParserCache";
+$maintClass = CompareParserCache::class;
 require_once RUN_MAINTENANCE_IF_MAIN;

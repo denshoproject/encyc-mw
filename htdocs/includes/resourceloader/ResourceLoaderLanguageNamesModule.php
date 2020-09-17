@@ -1,6 +1,6 @@
 <?php
 /**
- * Resource loader module for providing language names.
+ * ResourceLoader module for providing language names.
  *
  * By default these names will be autonyms however other extensions may
  * provided language names in the context language (e.g. cldr extension)
@@ -30,8 +30,7 @@
  */
 class ResourceLoaderLanguageNamesModule extends ResourceLoaderModule {
 
-	protected $targets = array( 'desktop', 'mobile' );
-
+	protected $targets = [ 'desktop', 'mobile' ];
 
 	/**
 	 * @param ResourceLoaderContext $context
@@ -49,31 +48,30 @@ class ResourceLoaderLanguageNamesModule extends ResourceLoaderModule {
 	 * @return string JavaScript code
 	 */
 	public function getScript( ResourceLoaderContext $context ) {
-		return Xml::encodeJsCall( 'mw.language.setData', array(
-			$context->getLanguage(),
-			'languageNames',
-			$this->getData( $context )
-		) );
-	}
-
-	public function getDependencies() {
-		return array( 'mediawiki.language.init' );
-	}
-
-	/**
-	 * @param ResourceLoaderContext $context
-	 * @return int UNIX timestamp
-	 */
-	public function getModifiedTime( ResourceLoaderContext $context ) {
-		return max( 1, $this->getHashMtime( $context ) );
+		return Xml::encodeJsCall(
+			'mw.language.setData',
+			[
+				$context->getLanguage(),
+				'languageNames',
+				$this->getData( $context )
+			],
+			ResourceLoader::inDebugMode()
+		);
 	}
 
 	/**
 	 * @param ResourceLoaderContext $context
-	 * @return string Hash
+	 * @return array
 	 */
-	public function getModifiedHash( ResourceLoaderContext $context ) {
-		return md5( serialize( $this->getData( $context ) ) );
+	public function getDependencies( ResourceLoaderContext $context = null ) {
+		return [ 'mediawiki.language.init' ];
+	}
+
+	/**
+	 * @return bool
+	 */
+	public function enableModuleContentVersion() {
+		return true;
 	}
 
 }

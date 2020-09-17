@@ -243,7 +243,7 @@ interface Content {
 	 *
 	 * @since 1.21
 	 *
-	 * @param bool $hasLinks If it is known whether this content contains
+	 * @param bool|null $hasLinks If it is known whether this content contains
 	 *    links, provide this information here, to avoid redundant parsing to
 	 *    find out.
 	 *
@@ -291,6 +291,9 @@ interface Content {
 	 *
 	 * Subclasses may implement this to determine the necessary updates more
 	 * efficiently, or make use of information about the old content.
+	 *
+	 * @note Implementations should call the SecondaryDataUpdates hook, like
+	 *   AbstractContent does.
 	 *
 	 * @param Title $title The context for determining the necessary updates
 	 * @param Content $old An optional Content object representing the
@@ -378,7 +381,7 @@ interface Content {
 	 *
 	 * @since 1.21
 	 *
-	 * @param string|number $sectionId Section identifier as a number or string
+	 * @param string|int $sectionId Section identifier as a number or string
 	 * (e.g. 0, 1 or 'T-1'). The ID "0" retrieves the section before the first heading, "1" the
 	 * text between the first heading (included) and the second heading (excluded), etc.
 	 *
@@ -393,7 +396,7 @@ interface Content {
 	 *
 	 * @since 1.21
 	 *
-	 * @param string|number|null|bool $sectionId Section identifier as a number or string
+	 * @param string|int|null|bool $sectionId Section identifier as a number or string
 	 * (e.g. 0, 1 or 'T-1'), null/false or an empty string for the whole page
 	 * or 'new' for a new section.
 	 * @param Content $with New content of the section
@@ -442,7 +445,7 @@ interface Content {
 	 *
 	 * @return Content
 	 */
-	public function preloadTransform( Title $title, ParserOptions $parserOptions, $params = array() );
+	public function preloadTransform( Title $title, ParserOptions $parserOptions, $params = [] );
 
 	/**
 	 * Prepare Content for saving. Called before Content is saved by WikiPage::doEditContent() and in
@@ -461,7 +464,7 @@ interface Content {
 	 *
 	 * @param WikiPage $page The page to be saved.
 	 * @param int $flags Bitfield for use with EDIT_XXX constants, see WikiPage::doEditContent()
-	 * @param int $baseRevId The ID of the current revision
+	 * @param int $parentRevId The ID of the current revision
 	 * @param User $user
 	 *
 	 * @return Status A status object indicating whether the content was
@@ -470,7 +473,7 @@ interface Content {
 	 *
 	 * @see WikiPage::doEditContent()
 	 */
-	public function prepareSave( WikiPage $page, $flags, $baseRevId, User $user );
+	public function prepareSave( WikiPage $page, $flags, $parentRevId, User $user );
 
 	/**
 	 * Returns a list of updates to perform when this content is deleted.
@@ -480,11 +483,11 @@ interface Content {
 	 * @since 1.21
 	 *
 	 * @param WikiPage $page The deleted page
-	 * @param ParserOutput $parserOutput Optional parser output object
+	 * @param ParserOutput|null $parserOutput Optional parser output object
 	 *    for efficient access to meta-information about the content object.
 	 *    Provide if you have one handy.
 	 *
-	 * @return DataUpdate[] A list of DataUpdate instances that will clean up the
+	 * @return DeferrableUpdate[] A list of DeferrableUpdate instances that will clean up the
 	 *    database after deletion.
 	 */
 	public function getDeletionUpdates( WikiPage $page,

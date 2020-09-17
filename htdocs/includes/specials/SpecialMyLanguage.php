@@ -41,11 +41,11 @@ class SpecialMyLanguage extends RedirectSpecialArticle {
 	 * If the special page is a redirect, then get the Title object it redirects to.
 	 * False otherwise.
 	 *
-	 * @param string $par Subpage string
-	 * @return Title|bool
+	 * @param string|null $subpage
+	 * @return Title
 	 */
-	public function getRedirect( $par ) {
-		$title = $this->findTitle( $par );
+	public function getRedirect( $subpage ) {
+		$title = $this->findTitle( $subpage );
 		// Go to the main page if given invalid title.
 		if ( !$title ) {
 			$title = Title::newMainPage();
@@ -59,35 +59,80 @@ class SpecialMyLanguage extends RedirectSpecialArticle {
 	 * it returns Page/fi if it exists, otherwise Page/de if it exists,
 	 * otherwise Page.
 	 *
-	 * @param string $par
+	 * @param string|null $subpage
 	 * @return Title|null
 	 */
-	public function findTitle( $par ) {
+	public function findTitle( $subpage ) {
 		// base = title without language code suffix
 		// provided = the title as it was given
-		$base = $provided = Title::newFromText( $par );
+		$base = $provided = null;
+		if ( $subpage !== null ) {
+			$provided = Title::newFromText( $subpage );
+			$base = $provided;
+		}
 
-		if ( $base && strpos( $par, '/' ) !== false ) {
-			$pos = strrpos( $par, '/' );
-			$basepage = substr( $par, 0, $pos );
-			$code = substr( $par, $pos + 1 );
+		if ( $provided && strpos( $subpage, '/' ) !== false ) {
+			$pos = strrpos( $subpage, '/' );
+			$basepage = substr( $subpage, 0, $pos );
+			$code = substr( $subpage, $pos + 1 );
 			if ( strlen( $code ) && Language::isKnownLanguageTag( $code ) ) {
 				$base = Title::newFromText( $basepage );
 			}
 		}
 
 		if ( !$base ) {
+			// No subpage provided or base page does not exist
 			return null;
 		}
 
+		if ( $base->isRedirect() ) {
+			$page = new WikiPage( $base );
+			$base = $page->getRedirectTarget();
+		}
+
 		$uiCode = $this->getLanguage()->getCode();
-		$proposed = $base->getSubpage( $uiCode );
-		if ( $uiCode !== $this->getConfig()->get( 'LanguageCode' ) && $proposed && $proposed->exists() ) {
-			return $proposed;
-		} elseif ( $provided && $provided->exists() ) {
-			return $provided;
-		} else {
+		$wikiLangCode = $this->getConfig()->get( 'LanguageCode' );
+
+		if ( $uiCode === $wikiLangCode ) {
+			// Short circuit when the current UI language is the
+			// wiki's default language to avoid unnecessary page lookups.
 			return $base;
 		}
+
+		// Check for a subpage in current UI language
+		$proposed = $base->getSubpage( $uiCode );
+		if ( $proposed && $proposed->exists() ) {
+			return $proposed;
+		}
+
+		if ( $provided !== $base && $provided->exists() ) {
+			// Explicit language code given and the page exists
+			return $provided;
+		}
+
+		// Check for fallback languages specified by the UI language
+		$possibilities = Language::getFallbacksFor( $uiCode );
+		foreach ( $possibilities as $lang ) {
+			if ( $lang !== $wikiLangCode ) {
+				$proposed = $base->getSubpage( $lang );
+				if ( $proposed && $proposed->exists() ) {
+					return $proposed;
+				}
+			}
+		}
+
+		// When all else has failed, return the base page
+		return $base;
+	}
+
+	/**
+	 * Target can identify a specific user's language preference.
+	 *
+	 * @see T109724
+	 * @since 1.27
+	 * @return bool
+	 */
+	public function personallyIdentifiableTarget() {
+		return true;
 	}
 }

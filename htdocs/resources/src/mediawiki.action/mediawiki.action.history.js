@@ -9,7 +9,8 @@ jQuery( function ( $ ) {
 	/**
 	 * @ignore
 	 * @context {Element} input
-	 * @param e {jQuery.Event}
+	 * @param {jQuery.Event} e
+	 * @return {boolean} False to cancel the default event
 	 */
 	function updateDiffRadios() {
 		var nextState = 'before',
@@ -22,8 +23,7 @@ jQuery( function ( $ ) {
 			return true;
 		}
 
-		$lis
-		.each( function () {
+		$lis.each( function () {
 			$li = $( this );
 			$inputs = $li.find( 'input[type="radio"]' );
 			$oldidRadio = $inputs.filter( '[name="oldid"]' ).eq( 0 );
@@ -85,7 +85,8 @@ jQuery( function ( $ ) {
 				$copyForm.find( 'input[name^="ids["]:checked' ).prop( 'checked', false );
 
 			// Remove diff=&oldid=, change action=historysubmit to revisiondelete, remove revisiondelete
-			} else if ( $historySubmitter.hasClass( 'mw-history-revisiondelete-button' ) ) {
+			} else if ( $historySubmitter.hasClass( 'mw-history-revisiondelete-button' ) ||
+					$historySubmitter.hasClass( 'mw-history-editchangetags-button' ) ) {
 				$copyRadios.remove();
 				$copyAction.val( $historySubmitter.attr( 'name' ) );
 				$copyForm.find( ':submit' ).remove();
@@ -95,8 +96,7 @@ jQuery( function ( $ ) {
 			// Also remove potentially conflicting id attributes that we don't need anyway
 			$copyForm
 				.css( 'display', 'none' )
-				.find( '[id]' )
-					.removeAttr( 'id' )
+				.find( '[id]' ).removeAttr( 'id' )
 				.end()
 				.insertAfter( $historyCompareForm )
 				.submit();

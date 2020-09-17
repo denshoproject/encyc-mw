@@ -1,62 +1,166 @@
 /**
- * This script provides a function which is run to evaluate whether or not to
- * continue loading jQuery and the MediaWiki modules. This code should work on
- * even the most ancient of browsers, so be very careful when editing.
+ * This file is where we decide whether to initialise the Grade A run-time.
+ *
+ * - Beware: This file MUST parse without errors on even the most ancient of browsers!
+ * - Beware: Do not call mwNow before the isCompatible() check.
  */
 
-var mediaWikiLoadStart = ( new Date() ).getTime();
+/* global mw, mwPerformance, mwNow, isCompatible, $VARS, $CODE */
+
+window.mwPerformance = ( window.performance && performance.mark ) ? performance : {
+	mark: function () {}
+};
+// Define now() here to ensure valid comparison with mediaWikiLoadEnd (T153819).
+window.mwNow = ( function () {
+	var perf = window.performance,
+		navStart = perf && perf.timing && perf.timing.navigationStart;
+	return navStart && typeof perf.now === 'function' ?
+		function () { return navStart + perf.now(); } :
+		function () { return Date.now(); };
+}() );
 
 /**
- * Returns false for Grade C supported browsers.
+ * See <https://www.mediawiki.org/wiki/Compatibility#Browsers>
  *
- * This function should only be used by the Startup module, do not expand it to
- * be generally useful beyond startup.
+ * Capabilities required for modern run-time:
+ * - ECMAScript 5
+ * - DOM Level 4 & Selectors API Level 1
+ * - HTML5 & Web Storage
+ * - DOM Level 2 Events
  *
- * See also:
- * - https://www.mediawiki.org/wiki/Compatibility#Browsers
- * - https://jquery.com/browser-support/
+ * Browsers we support in our modern run-time (Grade A):
+ * - Chrome 13+
+ * - IE 11+
+ * - Firefox 4+
+ * - Safari 5+
+ * - Opera 15+
+ * - Mobile Safari 6.0+ (iOS 6+)
+ * - Android 4.1+
+ *
+ * Browsers we support in our no-javascript run-time (Grade C):
+ * - Chrome 1+
+ * - IE 6+
+ * - Firefox 3+
+ * - Safari 3+
+ * - Opera 15+
+ * - Mobile Safari 5.0+ (iOS 4+)
+ * - Android 2.0+
+ * - WebOS < 1.5
+ * - PlayStation
+ * - Symbian-based browsers
+ * - NetFront-based browser
+ * - Opera Mini
+ * - Nokia's Ovi Browser
+ * - MeeGo's browser
+ * - Google Glass
+ * - UC Mini (speed mode on)
+ *
+ * Other browsers that pass the check are considered Grade X.
+ *
+ * @param {string} [str] User agent, defaults to navigator.userAgent
+ * @return {boolean} User agent is compatible with MediaWiki JS
  */
+window.isCompatible = function ( str ) {
+	var ua = str || navigator.userAgent;
+	return !!(
+		// https://caniuse.com/#feat=es5
+		// https://caniuse.com/#feat=use-strict
+		// https://caniuse.com/#feat=json / https://phabricator.wikimedia.org/T141344#2784065
+		( function () {
+			'use strict';
+			return !this && !!Function.prototype.bind && !!window.JSON;
+		}() ) &&
 
-/*jshint unused: false */
-function isCompatible( ua ) {
-	if ( ua === undefined ) {
-		ua = navigator.userAgent;
+		// https://caniuse.com/#feat=queryselector
+		'querySelector' in document &&
+
+		// https://caniuse.com/#feat=namevalue-storage
+		// https://developer.blackberry.com/html5/apis/v1_0/localstorage.html
+		// https://blog.whatwg.org/this-week-in-html-5-episode-30
+		'localStorage' in window &&
+
+		// https://caniuse.com/#feat=addeventlistener
+		'addEventListener' in window &&
+
+		// Hardcoded exceptions for browsers that pass the requirement but we don't want to
+		// support in the modern run-time.
+		// Note: Please extend the regex instead of adding new ones
+		!(
+			ua.match( /MSIE 10|webOS\/1\.[0-4]|SymbianOS|Series60|NetFront|Opera Mini|S40OviBrowser|MeeGo|Android.+Glass|^Mozilla\/5\.0 .+ Gecko\/$|googleweblight/ ) ||
+			ua.match( /PlayStation/i )
+		)
+	);
+};
+
+// Conditional script injection
+( function () {
+	var NORLQ, script;
+	if ( !isCompatible() ) {
+		// Undo class swapping in case of an unsupported browser.
+		// See ResourceLoaderClientHtml::getDocumentAttributes().
+		document.documentElement.className = document.documentElement.className
+			.replace( /(^|\s)client-js(\s|$)/, '$1client-nojs$2' );
+
+		NORLQ = window.NORLQ || [];
+		while ( NORLQ.length ) {
+			NORLQ.shift()();
+		}
+		window.NORLQ = {
+			push: function ( fn ) {
+				fn();
+			}
+		};
+
+		// Clear and disable the other queue
+		window.RLQ = {
+			// No-op
+			push: function () {}
+		};
+
+		return;
 	}
 
-	// Browsers with outdated or limited JavaScript engines get the no-JS experience
-	return !(
-		// Internet Explorer < 8
-		( ua.indexOf( 'MSIE' ) !== -1 && parseFloat( ua.split( 'MSIE' )[1] ) < 8 ) ||
-		// Firefox < 3
-		( ua.indexOf( 'Firefox/' ) !== -1 && parseFloat( ua.split( 'Firefox/' )[1] ) < 3 ) ||
-		// Opera < 12
-		( ua.indexOf( 'Opera/' ) !== -1 && ( ua.indexOf( 'Version/' ) === -1 ?
-			// "Opera/x.y"
-			parseFloat( ua.split( 'Opera/' )[1] ) < 10 :
-			// "Opera/9.80 ... Version/x.y"
-			parseFloat( ua.split( 'Version/' )[1] ) < 12
-		) ) ||
-		// "Mozilla/0.0 ... Opera x.y"
-		( ua.indexOf( 'Opera ' ) !== -1 && parseFloat( ua.split( ' Opera ' )[1] ) < 10 ) ||
-		// BlackBerry < 6
-		ua.match( /BlackBerry[^\/]*\/[1-5]\./ ) ||
-		// Open WebOS < 1.5
-		ua.match( /webOS\/1\.[0-4]/ ) ||
-		// Anything PlayStation based.
-		ua.match( /PlayStation/i ) ||
-		// Any Symbian based browsers
-		ua.match( /SymbianOS|Series60/ ) ||
-		// Any NetFront based browser
-		ua.match( /NetFront/ ) ||
-		// Opera Mini, all versions
-		ua.match( /Opera Mini/ ) ||
-		// Nokia's Ovi Browser
-		ua.match( /S40OviBrowser/ ) ||
-		// Google Glass browser groks JS but UI is too limited
-		( ua.match( /Glass/ ) && ua.match( /Android/ ) )
-	);
-}
+	/**
+	 * The $CODE and $VARS placeholders are substituted in ResourceLoaderStartUpModule.php.
+	 */
+	function startUp() {
+		mw.config = new mw.Map( $VARS.wgLegacyJavaScriptGlobals );
 
-/**
- * The startUp() function will be auto-generated and added below.
- */
+		$CODE.registrations();
+
+		mw.config.set( $VARS.configuration );
+
+		// Must be after mw.config.set because these callbacks may use mw.loader which
+		// needs to have values 'skin', 'debug' etc. from mw.config.
+		// eslint-disable-next-line vars-on-top
+		var RLQ = window.RLQ || [];
+		while ( RLQ.length ) {
+			RLQ.shift()();
+		}
+		window.RLQ = {
+			push: function ( fn ) {
+				fn();
+			}
+		};
+
+		// Clear and disable the other queue
+		window.NORLQ = {
+			// No-op
+			push: function () {}
+		};
+	}
+
+	window.mediaWikiLoadStart = mwNow();
+	mwPerformance.mark( 'mwLoadStart' );
+
+	script = document.createElement( 'script' );
+	script.src = $VARS.baseModulesUri;
+	script.onload = function () {
+		// Clean up
+		script.onload = null;
+		script = null;
+		// Callback
+		startUp();
+	};
+	document.head.appendChild( script );
+}() );

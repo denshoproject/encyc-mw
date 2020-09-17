@@ -114,14 +114,18 @@ class RepoGroup {
 	 *   private:        If true, return restricted (deleted) files if the current
 	 *                   user is allowed to view them. Otherwise, such files will not
 	 *                   be found.
-	 *   bypassCache:    If true, do not use the process-local cache of File objects
+	 *   latest:         If true, load from the latest available data into File objects
 	 * @return File|bool False if title is not found
 	 */
-	function findFile( $title, $options = array() ) {
+	function findFile( $title, $options = [] ) {
 		if ( !is_array( $options ) ) {
 			// MW 1.15 compat
-			$options = array( 'time' => $options );
+			$options = [ 'time' => $options ];
 		}
+		if ( isset( $options['bypassCache'] ) ) {
+			$options['latest'] = $options['bypassCache']; // b/c
+		}
+
 		if ( !$this->reposInitialised ) {
 			$this->initialiseRepos();
 		}
@@ -131,17 +135,18 @@ class RepoGroup {
 		}
 
 		# Check the cache
+		$dbkey = $title->getDBkey();
 		if ( empty( $options['ignoreRedirect'] )
 			&& empty( $options['private'] )
-			&& empty( $options['bypassCache'] )
+			&& empty( $options['latest'] )
 		) {
 			$time = isset( $options['time'] ) ? $options['time'] : '';
-			$dbkey = $title->getDBkey();
 			if ( $this->cache->has( $dbkey, $time, 60 ) ) {
 				return $this->cache->get( $dbkey, $time );
 			}
 			$useCache = true;
 		} else {
+			$time = false;
 			$useCache = false;
 		}
 
@@ -173,8 +178,8 @@ class RepoGroup {
 	 * @param array $inputItems An array of titles, or an array of findFile() options with
 	 *    the "title" option giving the title. Example:
 	 *
-	 *     $findItem = array( 'title' => $title, 'private' => true );
-	 *     $findBatch = array( $findItem );
+	 *     $findItem = [ 'title' => $title, 'private' => true ];
+	 *     $findBatch = [ $findItem ];
 	 *     $repo->findFiles( $findBatch );
 	 *
 	 *    No title should appear in $items twice, as the result use titles as keys
@@ -189,10 +194,10 @@ class RepoGroup {
 			$this->initialiseRepos();
 		}
 
-		$items = array();
+		$items = [];
 		foreach ( $inputItems as $item ) {
 			if ( !is_array( $item ) ) {
-				$item = array( 'title' => $item );
+				$item = [ 'title' => $item ];
 			}
 			$item['title'] = File::normalizeTitle( $item['title'] );
 			if ( $item['title'] ) {
@@ -247,7 +252,7 @@ class RepoGroup {
 	 * @param array $options Option array, same as findFile()
 	 * @return File|bool File object or false if it is not found
 	 */
-	function findFileFromKey( $hash, $options = array() ) {
+	function findFileFromKey( $hash, $options = [] ) {
 		if ( !$this->reposInitialised ) {
 			$this->initialiseRepos();
 		}
@@ -300,7 +305,7 @@ class RepoGroup {
 		foreach ( $this->foreignRepos as $repo ) {
 			$result = array_merge_recursive( $result, $repo->findBySha1s( $hashes ) );
 		}
-		//sort the merged (and presorted) sublist of each hash
+		// sort the merged (and presorted) sublist of each hash
 		foreach ( $result as $hash => $files ) {
 			usort( $result[$hash], 'File::compare' );
 		}
@@ -329,7 +334,7 @@ class RepoGroup {
 	/**
 	 * Get the repo instance by its name
 	 * @param string $name
-	 * @return bool
+	 * @return FileRepo|bool
 	 */
 	function getRepoByName( $name ) {
 		if ( !$this->reposInitialised ) {
@@ -362,12 +367,12 @@ class RepoGroup {
 	 * @param array $params Optional additional parameters to pass to the function
 	 * @return bool
 	 */
-	function forEachForeignRepo( $callback, $params = array() ) {
+	function forEachForeignRepo( $callback, $params = [] ) {
 		if ( !$this->reposInitialised ) {
 			$this->initialiseRepos();
 		}
 		foreach ( $this->foreignRepos as $repo ) {
-			$args = array_merge( array( $repo ), $params );
+			$args = array_merge( [ $repo ], $params );
 			if ( call_user_func_array( $callback, $args ) ) {
 				return true;
 			}
@@ -397,7 +402,7 @@ class RepoGroup {
 		$this->reposInitialised = true;
 
 		$this->localRepo = $this->newRepo( $this->localInfo );
-		$this->foreignRepos = array();
+		$this->foreignRepos = [];
 		foreach ( $this->foreignInfo as $key => $info ) {
 			$this->foreignRepos[$key] = $this->newRepo( $info );
 		}
@@ -418,7 +423,7 @@ class RepoGroup {
 	 * Split a virtual URL into repo, zone and rel parts
 	 * @param string $url
 	 * @throws MWException
-	 * @return array Containing repo, zone and rel
+	 * @return string[] Containing repo, zone and rel
 	 */
 	function splitVirtualUrl( $url ) {
 		if ( substr( $url, 0, 9 ) != 'mwrepo://' ) {
@@ -447,7 +452,9 @@ class RepoGroup {
 
 			return $repo->getFileProps( $fileName );
 		} else {
-			return FSFile::getPropsFromPath( $fileName );
+			$mwProps = new MWFileProps( MediaWiki\MediaWikiServices::getInstance()->getMimeAnalyzer() );
+
+			return $mwProps->getPropsFromPath( $fileName, true );
 		}
 	}
 

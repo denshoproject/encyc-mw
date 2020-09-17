@@ -21,9 +21,6 @@
  * @ingroup Language
  */
 
-require_once __DIR__ . '/../LanguageConverter.php';
-require_once __DIR__ . '/LanguageZh_hans.php';
-
 /**
  * @ingroup Language
  */
@@ -37,10 +34,10 @@ class ZhConverter extends LanguageConverter {
 	 * @param array $manualLevel
 	 */
 	function __construct( $langobj, $maincode,
-								$variants = array(),
-								$variantfallbacks = array(),
-								$flags = array(),
-								$manualLevel = array() ) {
+								$variants = [],
+								$variantfallbacks = [],
+								$flags = [],
+								$manualLevel = [] ) {
 		$this->mDescCodeSep = '：';
 		$this->mDescVarSep = '；';
 		parent::__construct( $langobj, $maincode,
@@ -48,7 +45,7 @@ class ZhConverter extends LanguageConverter {
 									$variantfallbacks,
 									$flags,
 									$manualLevel );
-		$names = array(
+		$names = [
 			'zh' => '原文',
 			'zh-hans' => '简体',
 			'zh-hant' => '繁體',
@@ -58,32 +55,43 @@ class ZhConverter extends LanguageConverter {
 			'zh-mo' => '澳門',
 			'zh-sg' => '新加坡',
 			'zh-my' => '大马',
-		);
+		];
 		$this->mVariantNames = array_merge( $this->mVariantNames, $names );
 	}
 
 	function loadDefaultTables() {
-		require __DIR__ . "/../../includes/ZhConversion.php";
-		$this->mTables = array(
-			'zh-hans' => new ReplacementArray( $zh2Hans ),
-			'zh-hant' => new ReplacementArray( $zh2Hant ),
-			'zh-cn' => new ReplacementArray( array_merge( $zh2Hans, $zh2CN ) ),
-			'zh-hk' => new ReplacementArray( array_merge( $zh2Hant, $zh2HK ) ),
-			'zh-mo' => new ReplacementArray( array_merge( $zh2Hant, $zh2HK ) ),
-			'zh-my' => new ReplacementArray( array_merge( $zh2Hans, $zh2SG ) ),
-			'zh-sg' => new ReplacementArray( array_merge( $zh2Hans, $zh2SG ) ),
-			'zh-tw' => new ReplacementArray( array_merge( $zh2Hant, $zh2TW ) ),
+		$this->mTables = [
+			'zh-hans' => new ReplacementArray( MediaWiki\Languages\Data\ZhConversion::$zh2Hans ),
+			'zh-hant' => new ReplacementArray( MediaWiki\Languages\Data\ZhConversion::$zh2Hant ),
+			'zh-cn' => new ReplacementArray( MediaWiki\Languages\Data\ZhConversion::$zh2CN ),
+			'zh-hk' => new ReplacementArray( MediaWiki\Languages\Data\ZhConversion::$zh2HK ),
+			'zh-mo' => new ReplacementArray( MediaWiki\Languages\Data\ZhConversion::$zh2HK ),
+			'zh-my' => new ReplacementArray( MediaWiki\Languages\Data\ZhConversion::$zh2CN ),
+			'zh-sg' => new ReplacementArray( MediaWiki\Languages\Data\ZhConversion::$zh2CN ),
+			'zh-tw' => new ReplacementArray( MediaWiki\Languages\Data\ZhConversion::$zh2TW ),
 			'zh' => new ReplacementArray
-		);
+		];
 	}
 
 	function postLoadTables() {
-		$this->mTables['zh-cn']->merge( $this->mTables['zh-hans'] );
-		$this->mTables['zh-hk']->merge( $this->mTables['zh-hant'] );
-		$this->mTables['zh-mo']->merge( $this->mTables['zh-hant'] );
-		$this->mTables['zh-my']->merge( $this->mTables['zh-hans'] );
-		$this->mTables['zh-sg']->merge( $this->mTables['zh-hans'] );
-		$this->mTables['zh-tw']->merge( $this->mTables['zh-hant'] );
+		$this->mTables['zh-cn']->setArray(
+			$this->mTables['zh-cn']->getArray() + $this->mTables['zh-hans']->getArray()
+		);
+		$this->mTables['zh-hk']->setArray(
+			$this->mTables['zh-hk']->getArray() + $this->mTables['zh-hant']->getArray()
+		);
+		$this->mTables['zh-mo']->setArray(
+			$this->mTables['zh-mo']->getArray() + $this->mTables['zh-hant']->getArray()
+		);
+		$this->mTables['zh-my']->setArray(
+			$this->mTables['zh-my']->getArray() + $this->mTables['zh-hans']->getArray()
+		);
+		$this->mTables['zh-sg']->setArray(
+			$this->mTables['zh-sg']->getArray() + $this->mTables['zh-hans']->getArray()
+		);
+		$this->mTables['zh-tw']->setArray(
+			$this->mTables['zh-tw']->getArray() + $this->mTables['zh-hant']->getArray()
+		);
 	}
 
 	/**
@@ -103,11 +111,9 @@ class ZhConverter extends LanguageConverter {
  */
 class LanguageZh extends LanguageZh_hans {
 	function __construct() {
-		global $wgHooks;
-
 		parent::__construct();
 
-		$variants = array(
+		$variants = [
 			'zh',
 			'zh-hans',
 			'zh-hant',
@@ -117,31 +123,29 @@ class LanguageZh extends LanguageZh_hans {
 			'zh-my',
 			'zh-sg',
 			'zh-tw'
-		);
+		];
 
-		$variantfallbacks = array(
-			'zh' => array( 'zh-hans', 'zh-hant', 'zh-cn', 'zh-tw', 'zh-hk', 'zh-sg', 'zh-mo', 'zh-my' ),
-			'zh-hans' => array( 'zh-cn', 'zh-sg', 'zh-my' ),
-			'zh-hant' => array( 'zh-tw', 'zh-hk', 'zh-mo' ),
-			'zh-cn' => array( 'zh-hans', 'zh-sg', 'zh-my' ),
-			'zh-sg' => array( 'zh-hans', 'zh-cn', 'zh-my' ),
-			'zh-my' => array( 'zh-hans', 'zh-sg', 'zh-cn' ),
-			'zh-tw' => array( 'zh-hant', 'zh-hk', 'zh-mo' ),
-			'zh-hk' => array( 'zh-hant', 'zh-mo', 'zh-tw' ),
-			'zh-mo' => array( 'zh-hant', 'zh-hk', 'zh-tw' ),
-		);
-		$ml = array(
+		$variantfallbacks = [
+			'zh' => [ 'zh-hans', 'zh-hant', 'zh-cn', 'zh-tw', 'zh-hk', 'zh-sg', 'zh-mo', 'zh-my' ],
+			'zh-hans' => [ 'zh-cn', 'zh-sg', 'zh-my' ],
+			'zh-hant' => [ 'zh-tw', 'zh-hk', 'zh-mo' ],
+			'zh-cn' => [ 'zh-hans', 'zh-sg', 'zh-my' ],
+			'zh-sg' => [ 'zh-hans', 'zh-cn', 'zh-my' ],
+			'zh-my' => [ 'zh-hans', 'zh-sg', 'zh-cn' ],
+			'zh-tw' => [ 'zh-hant', 'zh-hk', 'zh-mo' ],
+			'zh-hk' => [ 'zh-hant', 'zh-mo', 'zh-tw' ],
+			'zh-mo' => [ 'zh-hant', 'zh-hk', 'zh-tw' ],
+		];
+		$ml = [
 			'zh' => 'disable',
 			'zh-hans' => 'unidirectional',
 			'zh-hant' => 'unidirectional',
-		);
+		];
 
 		$this->mConverter = new ZhConverter( $this, 'zh',
 								$variants, $variantfallbacks,
-								array(),
+								[],
 								$ml );
-
-		$wgHooks['PageContentSaveComplete'][] = $this->mConverter;
 	}
 
 	/**
@@ -170,8 +174,6 @@ class LanguageZh extends LanguageZh_hans {
 	 * @return string
 	 */
 	function normalizeForSearch( $string, $autoVariant = 'zh-hans' ) {
-		wfProfileIn( __METHOD__ );
-
 		// always convert to zh-hans before indexing. it should be
 		// better to use zh-hans for search, since conversion from
 		// Traditional to Simplified is less ambiguous than the
@@ -179,9 +181,7 @@ class LanguageZh extends LanguageZh_hans {
 		$s = $this->mConverter->autoConvert( $string, $autoVariant );
 		// LanguageZh_hans::normalizeForSearch
 		$s = parent::normalizeForSearch( $s );
-		wfProfileOut( __METHOD__ );
 		return $s;
-
 	}
 
 	/**

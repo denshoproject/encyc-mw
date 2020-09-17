@@ -46,7 +46,7 @@ class GlobalVarConfig implements Config {
 	}
 
 	/**
-	 * @see Config::get
+	 * @inheritDoc
 	 */
 	public function get( $name ) {
 		if ( !$this->has( $name ) ) {
@@ -56,19 +56,10 @@ class GlobalVarConfig implements Config {
 	}
 
 	/**
-	 * @see Config::has
+	 * @inheritDoc
 	 */
 	public function has( $name ) {
 		return $this->hasWithPrefix( $this->prefix, $name );
-	}
-
-	/**
-	 * @see MutableConfig::set
-	 * @deprecated since 1.24
-	 */
-	public function set( $name, $value ) {
-		wfDeprecated( __METHOD__, '1.24' );
-		$this->setWithPrefix( $this->prefix, $name, $value );
 	}
 
 	/**
@@ -92,17 +83,5 @@ class GlobalVarConfig implements Config {
 	protected function hasWithPrefix( $prefix, $name ) {
 		$var = $prefix . $name;
 		return array_key_exists( $var, $GLOBALS );
-	}
-
-	/**
-	 * Get a variable with a given prefix, if not the defaults.
-	 *
-	 * @param string $prefix Prefix to use on the variable
-	 * @param string $name Variable name without prefix
-	 * @param mixed $value Value to set
-	 * @deprecated since 1.24
-	 */
-	protected function setWithPrefix( $prefix, $name, $value ) {
-		$GLOBALS[$prefix . $name] = $value;
 	}
 }

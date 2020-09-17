@@ -25,14 +25,15 @@ require_once __DIR__ . '/../Maintenance.php';
 
 /**
  * Generates the normalizer data file for Arabic.
- * For NFC see includes/normal.
+ *
+ * This data file is used after normalizing to NFC.
  *
  * @ingroup MaintenanceLanguage
  */
 class GenerateNormalizerDataAr extends Maintenance {
 	public function __construct() {
 		parent::__construct();
-		$this->mDescription = 'Generate the normalizer data file for Arabic';
+		$this->addDescription( 'Generate the normalizer data file for Arabic' );
 		$this->addOption( 'unicode-data-file', 'The local location of the data file ' .
 			'from http://unicode.org/Public/UNIDATA/UnicodeData.txt', false, true );
 	}
@@ -45,26 +46,23 @@ class GenerateNormalizerDataAr extends Maintenance {
 		if ( !$this->hasOption( 'unicode-data-file' ) ) {
 			$dataFile = 'UnicodeData.txt';
 			if ( !file_exists( $dataFile ) ) {
-				$this->error( "Unable to find UnicodeData.txt. Please specify " .
+				$this->fatalError( "Unable to find UnicodeData.txt. Please specify " .
 					"its location with --unicode-data-file=<FILE>" );
-				exit( 1 );
 			}
 		} else {
 			$dataFile = $this->getOption( 'unicode-data-file' );
 			if ( !file_exists( $dataFile ) ) {
-				$this->error( 'Unable to find the specified data file.' );
-				exit( 1 );
+				$this->fatalError( 'Unable to find the specified data file.' );
 			}
 		}
 
 		$file = fopen( $dataFile, 'r' );
 		if ( !$file ) {
-			$this->error( 'Unable to open the data file.' );
-			exit( 1 );
+			$this->fatalError( 'Unable to open the data file.' );
 		}
 
 		// For the file format, see http://www.unicode.org/reports/tr44/
-		$fieldNames = array(
+		$fieldNames = [
 			'Code',
 			'Name',
 			'General_Category',
@@ -80,9 +78,9 @@ class GenerateNormalizerDataAr extends Maintenance {
 			'Simple_Uppercase_Mapping',
 			'Simple_Lowercase_Mapping',
 			'Simple_Titlecase_Mapping'
-		);
+		];
 
-		$pairs = array();
+		$pairs = [];
 
 		$lineNum = 0;
 		while ( false !== ( $line = fgets( $file ) ) ) {
@@ -96,7 +94,7 @@ class GenerateNormalizerDataAr extends Maintenance {
 
 			# Split fields
 			$numberedData = explode( ';', $line );
-			$data = array();
+			$data = [];
 			foreach ( $fieldNames as $number => $name ) {
 				$data[$name] = $numberedData[$number];
 			}
@@ -117,8 +115,8 @@ class GenerateNormalizerDataAr extends Maintenance {
 					continue;
 				}
 
-				$source = hexSequenceToUtf8( $data['Code'] );
-				$dest = hexSequenceToUtf8( $m[2] );
+				$source = UtfNormal\Utils::hexSequenceToUtf8( $data['Code'] );
+				$dest = UtfNormal\Utils::hexSequenceToUtf8( $m[2] );
 				$pairs[$source] = $dest;
 			}
 		}
@@ -129,5 +127,5 @@ class GenerateNormalizerDataAr extends Maintenance {
 	}
 }
 
-$maintClass = 'GenerateNormalizerDataAr';
+$maintClass = GenerateNormalizerDataAr::class;
 require_once RUN_MAINTENANCE_IF_MAIN;

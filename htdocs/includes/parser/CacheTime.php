@@ -32,11 +32,17 @@ class CacheTime {
 	 */
 	public $mUsedOptions;
 
-	public $mVersion = Parser::VERSION,  # Compatibility check
-		$mCacheTime = '',             # Time when this object was generated, or -1 for uncacheable. Used in ParserCache.
-		$mCacheExpiry = null,         # Seconds after which the object should expire, use 0 for uncachable. Used in ParserCache.
-		$mContainsOldMagic,           # Boolean variable indicating if the input contained variables like {{CURRENTDAY}}
-		$mCacheRevisionId = null;     # Revision ID that was parsed
+	# Compatibility check
+	public $mVersion = Parser::VERSION;
+
+	# Time when this object was generated, or -1 for uncacheable. Used in ParserCache.
+	public $mCacheTime = '';
+
+	# Seconds after which the object should expire, use 0 for uncacheable. Used in ParserCache.
+	public $mCacheExpiry = null;
+
+	# Revision ID that was parsed
+	public $mCacheRevisionId = null;
 
 	/**
 	 * @return string TS_MW timestamp
@@ -46,24 +52,9 @@ class CacheTime {
 	}
 
 	/**
-	 * @return bool
-	 */
-	public function containsOldMagic() {
-		return $this->mContainsOldMagic;
-	}
-
-	/**
-	 * @param bool $com
-	 * @return bool
-	 */
-	public function setContainsOldMagic( $com ) {
-		return wfSetVar( $this->mContainsOldMagic, $com );
-	}
-
-	/**
 	 * setCacheTime() sets the timestamp expressing when the page has been rendered.
 	 * This does not control expiry, see updateCacheExpiry() for that!
-	 * @param string $t
+	 * @param string $t TS_MW timestamp
 	 * @return string
 	 */
 	public function setCacheTime( $t ) {
@@ -88,11 +79,14 @@ class CacheTime {
 
 	/**
 	 * Sets the number of seconds after which this object should expire.
+	 *
 	 * This value is used with the ParserCache.
 	 * If called with a value greater than the value provided at any previous call,
 	 * the new call has no effect. The value returned by getCacheExpiry is smaller
 	 * or equal to the smallest number that was provided as an argument to
 	 * updateCacheExpiry().
+	 *
+	 * Avoid using 0 if at all possible. Consider JavaScript for highly dynamic content.
 	 *
 	 * @param int $seconds
 	 */
@@ -101,11 +95,6 @@ class CacheTime {
 
 		if ( $this->mCacheExpiry === null || $this->mCacheExpiry > $seconds ) {
 			$this->mCacheExpiry = $seconds;
-		}
-
-		// hack: set old-style marker for uncacheable entries.
-		if ( $this->mCacheExpiry !== null && $this->mCacheExpiry <= 0 ) {
-			$this->mCacheTime = -1;
 		}
 	}
 
@@ -123,7 +112,7 @@ class CacheTime {
 
 		if ( $this->mCacheTime < 0 ) {
 			return 0;
-		} // old-style marker for "not cachable"
+		} // old-style marker for "not cacheable"
 
 		$expire = $this->mCacheExpiry;
 
@@ -133,12 +122,8 @@ class CacheTime {
 			$expire = min( $expire, $wgParserCacheExpireTime );
 		}
 
-		if ( $this->containsOldMagic() ) { //compatibility hack
-			$expire = min( $expire, 3600 ); # 1 hour
-		}
-
 		if ( $expire <= 0 ) {
-			return 0; // not cachable
+			return 0; // not cacheable
 		} else {
 			return $expire;
 		}

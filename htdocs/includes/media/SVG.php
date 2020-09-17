@@ -20,6 +20,7 @@
  * @file
  * @ingroup Media
  */
+use Wikimedia\ScopedCallback;
 
 /**
  * Handler for SVG images.
@@ -33,12 +34,12 @@ class SvgHandler extends ImageHandler {
 	 *  to the commonly used exif tags. This allows messages
 	 *  to be reused, and consistent tag names for {{#formatmetadata:..}}
 	 */
-	private static $metaConversion = array(
+	private static $metaConversion = [
 		'originalwidth' => 'ImageWidth',
 		'originalheight' => 'ImageLength',
 		'description' => 'ImageDescription',
 		'title' => 'ObjectName',
-	);
+	];
 
 	function isEnabled() {
 		global $wgSVGConverters, $wgSVGConverter;
@@ -51,7 +52,7 @@ class SvgHandler extends ImageHandler {
 		}
 	}
 
-	function mustRender( $file ) {
+	public function mustRender( $file ) {
 		return true;
 	}
 
@@ -90,25 +91,56 @@ class SvgHandler extends ImageHandler {
 	 */
 	public function getAvailableLanguages( File $file ) {
 		$metadata = $file->getMetadata();
-		$langList = array();
+		$langList = [];
 		if ( $metadata ) {
 			$metadata = $this->unpackMetadata( $metadata );
 			if ( isset( $metadata['translations'] ) ) {
 				foreach ( $metadata['translations'] as $lang => $langType ) {
-					if ( $langType === SvgReader::LANG_FULL_MATCH ) {
-						$langList[] = $lang;
+					if ( $langType === SVGReader::LANG_FULL_MATCH ) {
+						$langList[] = strtolower( $lang );
 					}
 				}
 			}
 		}
-		return $langList;
+		return array_unique( $langList );
 	}
 
 	/**
-	 * What language to render file in if none selected.
+	 * SVG's systemLanguage matching rules state:
+	 * 'The `systemLanguage` attribute ... [e]valuates to "true" if one of the languages indicated
+	 * by user preferences exactly equals one of the languages given in the value of this parameter,
+	 * or if one of the languages indicated by user preferences exactly equals a prefix of one of
+	 * the languages given in the value of this parameter such that the first tag character
+	 * following the prefix is "-".'
 	 *
-	 * @param File $file
-	 * @return string Language code.
+	 * Return the first element of $svgLanguages that matches $userPreferredLanguage
+	 *
+	 * @see https://www.w3.org/TR/SVG/struct.html#SystemLanguageAttribute
+	 * @param string $userPreferredLanguage
+	 * @param array $svgLanguages
+	 * @return string|null
+	 */
+	public function getMatchedLanguage( $userPreferredLanguage, array $svgLanguages ) {
+		foreach ( $svgLanguages as $svgLang ) {
+			if ( strcasecmp( $svgLang, $userPreferredLanguage ) === 0 ) {
+				return $svgLang;
+			}
+			$trimmedSvgLang = $svgLang;
+			while ( strpos( $trimmedSvgLang, '-' ) !== false ) {
+				$trimmedSvgLang = substr( $trimmedSvgLang, 0, strrpos( $trimmedSvgLang, '-' ) );
+				if ( strcasecmp( $trimmedSvgLang, $userPreferredLanguage ) === 0 ) {
+					return $svgLang;
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * What language to render file in if none selected
+	 *
+	 * @param File $file Language code
+	 * @return string
 	 */
 	public function getDefaultRenderLanguage( File $file ) {
 		return 'en';
@@ -125,7 +157,7 @@ class SvgHandler extends ImageHandler {
 
 	/**
 	 * @param File $image
-	 * @param array $params
+	 * @param array &$params
 	 * @return bool
 	 */
 	function normaliseParams( $image, &$params ) {
@@ -177,14 +209,14 @@ class SvgHandler extends ImageHandler {
 
 		$metadata = $this->unpackMetadata( $image->getMetadata() );
 		if ( isset( $metadata['error'] ) ) { // sanity check
-			$err = wfMessage( 'svg-long-error', $metadata['error']['message'] )->text();
+			$err = wfMessage( 'svg-long-error', $metadata['error']['message'] );
 
 			return new MediaTransformError( 'thumbnail_error', $clientWidth, $clientHeight, $err );
 		}
 
 		if ( !wfMkdirParents( dirname( $dstPath ), null, __METHOD__ ) ) {
 			return new MediaTransformError( 'thumbnail_error', $clientWidth, $clientHeight,
-				wfMessage( 'thumbnail_dest_directory' )->text() );
+				wfMessage( 'thumbnail_dest_directory' ) );
 		}
 
 		$srcPath = $image->getLocalRefPath();
@@ -195,7 +227,7 @@ class SvgHandler extends ImageHandler {
 
 			return new MediaTransformError( 'thumbnail_error',
 				$params['width'], $params['height'],
-				wfMessage( 'filemissing' )->text()
+				wfMessage( 'filemissing' )
 			);
 		}
 
@@ -204,12 +236,23 @@ class SvgHandler extends ImageHandler {
 		// https://git.gnome.org/browse/librsvg/commit/?id=f01aded72c38f0e18bc7ff67dee800e380251c8e
 		$tmpDir = wfTempDir() . '/svg_' . wfRandomString( 24 );
 		$lnPath = "$tmpDir/" . basename( $srcPath );
-		$ok = mkdir( $tmpDir, 0771 ) && symlink( $srcPath, $lnPath );
+		$ok = mkdir( $tmpDir, 0771 );
+		if ( !$ok ) {
+			wfDebugLog( 'thumbnail',
+				sprintf( 'Thumbnail failed on %s: could not create temporary directory %s',
+					wfHostname(), $tmpDir ) );
+			return new MediaTransformError( 'thumbnail_error',
+				$params['width'], $params['height'],
+				wfMessage( 'thumbnail-temp-create' )->text()
+			);
+		}
+		$ok = symlink( $srcPath, $lnPath );
+		/** @noinspection PhpUnusedLocalVariableInspection */
 		$cleaner = new ScopedCallback( function () use ( $tmpDir, $lnPath ) {
-			wfSuppressWarnings();
+			Wikimedia\suppressWarnings();
 			unlink( $lnPath );
 			rmdir( $tmpDir );
-			wfRestoreWarnings();
+			Wikimedia\restoreWarnings();
 		} );
 		if ( !$ok ) {
 			wfDebugLog( 'thumbnail',
@@ -217,7 +260,7 @@ class SvgHandler extends ImageHandler {
 					wfHostname(), $lnPath, $srcPath ) );
 			return new MediaTransformError( 'thumbnail_error',
 				$params['width'], $params['height'],
-				wfMessage( 'thumbnail-temp-create' )->text()
+				wfMessage( 'thumbnail-temp-create' )
 			);
 		}
 
@@ -248,7 +291,7 @@ class SvgHandler extends ImageHandler {
 			if ( is_array( $wgSVGConverters[$wgSVGConverter] ) ) {
 				// This is a PHP callable
 				$func = $wgSVGConverters[$wgSVGConverter][0];
-				$args = array_merge( array( $srcPath, $dstPath, $width, $height, $lang ),
+				$args = array_merge( [ $srcPath, $dstPath, $width, $height, $lang ],
 					array_slice( $wgSVGConverters[$wgSVGConverter], 1 ) );
 				if ( !is_callable( $func ) ) {
 					throw new MWException( "$func is not callable" );
@@ -258,24 +301,22 @@ class SvgHandler extends ImageHandler {
 			} else {
 				// External command
 				$cmd = str_replace(
-					array( '$path/', '$width', '$height', '$input', '$output' ),
-					array( $wgSVGConverterPath ? wfEscapeShellArg( "$wgSVGConverterPath/" ) : "",
+					[ '$path/', '$width', '$height', '$input', '$output' ],
+					[ $wgSVGConverterPath ? wfEscapeShellArg( "$wgSVGConverterPath/" ) : "",
 						intval( $width ),
 						intval( $height ),
 						wfEscapeShellArg( $srcPath ),
-						wfEscapeShellArg( $dstPath ) ),
+						wfEscapeShellArg( $dstPath ) ],
 					$wgSVGConverters[$wgSVGConverter]
 				);
 
-				$env = array();
+				$env = [];
 				if ( $lang !== false ) {
 					$env['LANG'] = $lang;
 				}
 
-				wfProfileIn( 'rsvg' );
 				wfDebug( __METHOD__ . ": $cmd\n" );
 				$err = wfShellExecWithStderr( $cmd, $retval, $env );
-				wfProfileOut( 'rsvg' );
 			}
 		}
 		$removed = $this->removeBadFile( $dstPath, $retval );
@@ -302,27 +343,27 @@ class SvgHandler extends ImageHandler {
 	}
 
 	/**
-	 * @param File $file
+	 * @param File|FSFile $file
 	 * @param string $path Unused
 	 * @param bool|array $metadata
 	 * @return array
 	 */
 	function getImageSize( $file, $path, $metadata = false ) {
-		if ( $metadata === false ) {
-			$metadata = $file->getMetaData();
+		if ( $metadata === false && $file instanceof File ) {
+			$metadata = $file->getMetadata();
 		}
-		$metadata = $this->unpackMetaData( $metadata );
+		$metadata = $this->unpackMetadata( $metadata );
 
 		if ( isset( $metadata['width'] ) && isset( $metadata['height'] ) ) {
-			return array( $metadata['width'], $metadata['height'], 'SVG',
-				"width=\"{$metadata['width']}\" height=\"{$metadata['height']}\"" );
+			return [ $metadata['width'], $metadata['height'], 'SVG',
+				"width=\"{$metadata['width']}\" height=\"{$metadata['height']}\"" ];
 		} else { // error
-			return array( 0, 0, 'SVG', "width=\"0\" height=\"0\"" );
+			return [ 0, 0, 'SVG', "width=\"0\" height=\"0\"" ];
 		}
 	}
 
 	function getThumbType( $ext, $mime, $params = null ) {
-		return array( 'png', 'image/png' );
+		return [ 'png', 'image/png' ];
 	}
 
 	/**
@@ -356,20 +397,20 @@ class SvgHandler extends ImageHandler {
 	}
 
 	/**
-	 * @param File $file
+	 * @param File|FSFile $file
 	 * @param string $filename
 	 * @return string Serialised metadata
 	 */
 	function getMetadata( $file, $filename ) {
-		$metadata = array( 'version' => self::SVG_METADATA_VERSION );
+		$metadata = [ 'version' => self::SVG_METADATA_VERSION ];
 		try {
 			$metadata += SVGMetadataExtractor::getMetadata( $filename );
-		} catch ( MWException $e ) { // @todo SVG specific exceptions
+		} catch ( Exception $e ) { // @todo SVG specific exceptions
 			// File not found, broken, etc.
-			$metadata['error'] = array(
+			$metadata['error'] = [
 				'message' => $e->getMessage(),
 				'code' => $e->getCode()
-			);
+			];
 			wfDebug( __METHOD__ . ': ' . $e->getMessage() . "\n" );
 		}
 
@@ -377,9 +418,9 @@ class SvgHandler extends ImageHandler {
 	}
 
 	function unpackMetadata( $metadata ) {
-		wfSuppressWarnings();
+		Wikimedia\suppressWarnings();
 		$unser = unserialize( $metadata );
-		wfRestoreWarnings();
+		Wikimedia\restoreWarnings();
 		if ( isset( $unser['version'] ) && $unser['version'] == self::SVG_METADATA_VERSION ) {
 			return $unser;
 		} else {
@@ -405,20 +446,21 @@ class SvgHandler extends ImageHandler {
 	}
 
 	protected function visibleMetadataFields() {
-		$fields = array( 'objectname', 'imagedescription' );
+		$fields = [ 'objectname', 'imagedescription' ];
 
 		return $fields;
 	}
 
 	/**
 	 * @param File $file
+	 * @param bool|IContextSource $context Context to use (optional)
 	 * @return array|bool
 	 */
-	function formatMetadata( $file ) {
-		$result = array(
-			'visible' => array(),
-			'collapsed' => array()
-		);
+	function formatMetadata( $file, $context = false ) {
+		$result = [
+			'visible' => [],
+			'collapsed' => []
+		];
 		$metadata = $file->getMetadata();
 		if ( !$metadata ) {
 			return false;
@@ -462,15 +504,13 @@ class SvgHandler extends ImageHandler {
 	 * @param mixed $value Parameter value
 	 * @return bool Validity
 	 */
-	function validateParam( $name, $value ) {
-		if ( in_array( $name, array( 'width', 'height' ) ) ) {
+	public function validateParam( $name, $value ) {
+		if ( in_array( $name, [ 'width', 'height' ] ) ) {
 			// Reject negative heights, widths
 			return ( $value > 0 );
 		} elseif ( $name == 'lang' ) {
 			// Validate $code
-			if ( $value === '' || !Language::isValidBuiltinCode( $value ) ) {
-				wfDebug( "Invalid user language code\n" );
-
+			if ( $value === '' || !Language::isValidCode( $value ) ) {
 				return false;
 			}
 
@@ -485,11 +525,10 @@ class SvgHandler extends ImageHandler {
 	 * @param array $params Name=>value pairs of parameters
 	 * @return string Filename to use
 	 */
-	function makeParamString( $params ) {
+	public function makeParamString( $params ) {
 		$lang = '';
 		if ( isset( $params['lang'] ) && $params['lang'] !== 'en' ) {
-			$params['lang'] = mb_strtolower( $params['lang'] );
-			$lang = "lang{$params['lang']}-";
+			$lang = 'lang' . strtolower( $params['lang'] ) . '-';
 		}
 		if ( !isset( $params['width'] ) ) {
 			return false;
@@ -498,19 +537,19 @@ class SvgHandler extends ImageHandler {
 		return "$lang{$params['width']}px";
 	}
 
-	function parseParamString( $str ) {
+	public function parseParamString( $str ) {
 		$m = false;
-		if ( preg_match( '/^lang([a-z]+(?:-[a-z]+)*)-(\d+)px$/', $str, $m ) ) {
-			return array( 'width' => array_pop( $m ), 'lang' => $m[1] );
+		if ( preg_match( '/^lang([a-z]+(?:-[a-z]+)*)-(\d+)px$/i', $str, $m ) ) {
+			return [ 'width' => array_pop( $m ), 'lang' => $m[1] ];
 		} elseif ( preg_match( '/^(\d+)px$/', $str, $m ) ) {
-			return array( 'width' => $m[1], 'lang' => 'en' );
+			return [ 'width' => $m[1], 'lang' => 'en' ];
 		} else {
 			return false;
 		}
 	}
 
-	function getParamMap() {
-		return array( 'img_lang' => 'lang', 'img_width' => 'width' );
+	public function getParamMap() {
+		return [ 'img_lang' => 'lang', 'img_width' => 'width' ];
 	}
 
 	/**
@@ -518,7 +557,7 @@ class SvgHandler extends ImageHandler {
 	 * @return array
 	 */
 	function getScriptParams( $params ) {
-		$scriptParams = array( 'width' => $params['width'] );
+		$scriptParams = [ 'width' => $params['width'] ];
 		if ( isset( $params['lang'] ) ) {
 			$scriptParams['lang'] = $params['lang'];
 		}
@@ -529,13 +568,13 @@ class SvgHandler extends ImageHandler {
 	public function getCommonMetaArray( File $file ) {
 		$metadata = $file->getMetadata();
 		if ( !$metadata ) {
-			return array();
+			return [];
 		}
 		$metadata = $this->unpackMetadata( $metadata );
 		if ( !$metadata || isset( $metadata['error'] ) ) {
-			return array();
+			return [];
 		}
-		$stdMetadata = array();
+		$stdMetadata = [];
 		foreach ( $metadata as $name => $value ) {
 			$tag = strtolower( $name );
 			if ( $tag === 'originalwidth' || $tag === 'originalheight' ) {

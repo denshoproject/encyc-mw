@@ -18,7 +18,6 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @author Aaron Schulz
  */
 
 /**
@@ -34,7 +33,7 @@ abstract class JobQueueAggregator {
 	/**
 	 * @param array $params
 	 */
-	protected function __construct( array $params ) {
+	public function __construct( array $params ) {
 	}
 
 	/**
@@ -73,15 +72,16 @@ abstract class JobQueueAggregator {
 	 * @return bool Success
 	 */
 	final public function notifyQueueEmpty( $wiki, $type ) {
-		wfProfileIn( __METHOD__ );
 		$ok = $this->doNotifyQueueEmpty( $wiki, $type );
-		wfProfileOut( __METHOD__ );
 
 		return $ok;
 	}
 
 	/**
 	 * @see JobQueueAggregator::notifyQueueEmpty()
+	 * @param string $wiki
+	 * @param string $type
+	 * @return bool
 	 */
 	abstract protected function doNotifyQueueEmpty( $wiki, $type );
 
@@ -93,15 +93,16 @@ abstract class JobQueueAggregator {
 	 * @return bool Success
 	 */
 	final public function notifyQueueNonEmpty( $wiki, $type ) {
-		wfProfileIn( __METHOD__ );
 		$ok = $this->doNotifyQueueNonEmpty( $wiki, $type );
-		wfProfileOut( __METHOD__ );
 
 		return $ok;
 	}
 
 	/**
 	 * @see JobQueueAggregator::notifyQueueNonEmpty()
+	 * @param string $wiki
+	 * @param string $type
+	 * @return bool
 	 */
 	abstract protected function doNotifyQueueNonEmpty( $wiki, $type );
 
@@ -111,9 +112,7 @@ abstract class JobQueueAggregator {
 	 * @return array (job type => (list of wiki IDs))
 	 */
 	final public function getAllReadyWikiQueues() {
-		wfProfileIn( __METHOD__ );
 		$res = $this->doGetAllReadyWikiQueues();
-		wfProfileOut( __METHOD__ );
 
 		return $res;
 	}
@@ -129,9 +128,7 @@ abstract class JobQueueAggregator {
 	 * @return bool Success
 	 */
 	final public function purge() {
-		wfProfileIn( __METHOD__ );
 		$res = $this->doPurge();
-		wfProfileOut( __METHOD__ );
 
 		return $res;
 	}
@@ -150,7 +147,7 @@ abstract class JobQueueAggregator {
 	protected function findPendingWikiQueues() {
 		global $wgLocalDatabases;
 
-		$pendingDBs = array(); // (job type => (db list))
+		$pendingDBs = []; // (job type => (db list))
 		foreach ( $wgLocalDatabases as $db ) {
 			foreach ( JobQueueGroup::singleton( $db )->getQueuesWithJobs() as $type ) {
 				$pendingDBs[$type][] = $db;
@@ -158,5 +155,26 @@ abstract class JobQueueAggregator {
 		}
 
 		return $pendingDBs;
+	}
+}
+
+/**
+ * @ingroup JobQueue
+ */
+class JobQueueAggregatorNull extends JobQueueAggregator {
+	protected function doNotifyQueueEmpty( $wiki, $type ) {
+		return true;
+	}
+
+	protected function doNotifyQueueNonEmpty( $wiki, $type ) {
+		return true;
+	}
+
+	protected function doGetAllReadyWikiQueues() {
+		return [];
+	}
+
+	protected function doPurge() {
+		return true;
 	}
 }

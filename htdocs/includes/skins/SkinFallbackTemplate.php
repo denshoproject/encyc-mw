@@ -17,16 +17,17 @@ class SkinFallbackTemplate extends BaseTemplate {
 	 * @return array
 	 */
 	private function findInstalledSkins() {
-		$styleDirectory = $this->config->get( 'StyleDirectory' ); // @todo we should inject this directly?
+		$styleDirectory = $this->config->get( 'StyleDirectory' );
 		// Get all subdirectories which might contains skins
 		$possibleSkins = scandir( $styleDirectory );
 		$possibleSkins = array_filter( $possibleSkins, function ( $maybeDir ) use ( $styleDirectory ) {
 			return $maybeDir !== '.' && $maybeDir !== '..' && is_dir( "$styleDirectory/$maybeDir" );
 		} );
 
-		// Only keep the ones that contain a .php file with the same name inside
+		// Filter out skins that aren't installed
 		$possibleSkins = array_filter( $possibleSkins, function ( $skinDir ) use ( $styleDirectory ) {
-			return is_file( "$styleDirectory/$skinDir/$skinDir.php" );
+			return is_file( "$styleDirectory/$skinDir/skin.json" )
+				|| is_file( "$styleDirectory/$skinDir/$skinDir.php" );
 		} );
 
 		return $possibleSkins;
@@ -44,8 +45,8 @@ class SkinFallbackTemplate extends BaseTemplate {
 		$enabledSkins = array_change_key_case( $enabledSkins, CASE_LOWER );
 
 		if ( $installedSkins ) {
-			$skinsInstalledText = array();
-			$skinsInstalledSnippet = array();
+			$skinsInstalledText = [];
+			$skinsInstalledSnippet = [];
 
 			foreach ( $installedSkins as $skin ) {
 				$normalizedKey = strtolower( $skin );
@@ -56,14 +57,16 @@ class SkinFallbackTemplate extends BaseTemplate {
 				} else {
 					$skinsInstalledText[] = $this->getMsg( 'default-skin-not-found-row-disabled' )
 						->params( $normalizedKey, $skin )->plain();
-					$skinsInstalledSnippet[] = "require_once \"\$IP/skins/$skin/$skin.php\";";
+					$skinsInstalledSnippet[] = $this->getSnippetForSkin( $skin );
 				}
 			}
 
 			return $this->getMsg( 'default-skin-not-found' )->params(
 				$defaultSkin,
 				implode( "\n", $skinsInstalledText ),
-				implode( "\n", $skinsInstalledSnippet )
+				implode( "\n", $skinsInstalledSnippet ) )->numParams(
+					count( $skinsInstalledText ),
+					count( $skinsInstalledSnippet )
 			)->parseAsBlock();
 		} else {
 			return $this->getMsg( 'default-skin-not-found-no-skins' )->params(
@@ -73,27 +76,37 @@ class SkinFallbackTemplate extends BaseTemplate {
 	}
 
 	/**
+	 * Get the appropriate LocalSettings.php snippet to enable the given skin
+	 *
+	 * @param string $skin
+	 * @return string
+	 */
+	private function getSnippetForSkin( $skin ) {
+		global $IP;
+		if ( file_exists( "$IP/skins/$skin/skin.json" ) ) {
+			return "wfLoadSkin( '$skin' );";
+		} else {
+			return "require_once \"\$IP/skins/$skin/$skin.php\";";
+		}
+	}
+
+	/**
 	 * Outputs the entire contents of the page. No navigation (other than search box), just the big
 	 * warning message and page content.
 	 */
 	public function execute() {
-		$this->html( 'headelement' ) ?>
-
-		<div class="warningbox">
-			<?php echo $this->buildHelpfulInformationMessage() ?>
-		</div>
-
+		$this->html( 'headelement' );
+		echo Html::warningBox( $this->buildHelpfulInformationMessage() );
+	?>
 		<form action="<?php $this->text( 'wgScript' ) ?>">
 			<input type="hidden" name="title" value="<?php $this->text( 'searchtitle' ) ?>" />
 			<h3><label for="searchInput"><?php $this->msg( 'search' ) ?></label></h3>
-			<?php echo $this->makeSearchInput( array( "id" => "searchInput" ) ) ?>
+			<?php echo $this->makeSearchInput( [ "id" => "searchInput" ] ) ?>
 			<?php echo $this->makeSearchButton( 'go' ) ?>
 		</form>
 
 		<div class="mw-body" role="main">
-			<h1 class="firstHeading">
-				<span dir="auto"><?php $this->html( 'title' ) ?></span>
-			</h1>
+			<h1 class="firstHeading"><?php $this->html( 'title' ) ?></h1>
 
 			<div class="mw-body-content">
 				<?php $this->html( 'bodytext' ) ?>

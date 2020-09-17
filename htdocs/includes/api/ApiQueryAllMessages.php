@@ -1,9 +1,5 @@
 <?php
 /**
- *
- *
- * Created on Dec 1, 2007
- *
  * Copyright © 2006 Yuri Astrakhan "<Firstname><Lastname>@gmail.com"
  *
  * This program is free software; you can redistribute it and/or modify
@@ -41,7 +37,9 @@ class ApiQueryAllMessages extends ApiQueryBase {
 		if ( is_null( $params['lang'] ) ) {
 			$langObj = $this->getLanguage();
 		} elseif ( !Language::isValidCode( $params['lang'] ) ) {
-			$this->dieUsage( 'Invalid language code for parameter lang', 'invalidlang' );
+			$this->dieWithError(
+				[ 'apierror-invalidlang', $this->encodeParamName( 'lang' ) ], 'invalidlang'
+			);
 		} else {
 			$langObj = Language::factory( $params['lang'] );
 		}
@@ -50,7 +48,7 @@ class ApiQueryAllMessages extends ApiQueryBase {
 			if ( !is_null( $params['title'] ) ) {
 				$title = Title::newFromText( $params['title'] );
 				if ( !$title || $title->isExternal() ) {
-					$this->dieUsageMsg( array( 'invalidtitle', $params['title'] ) );
+					$this->dieWithError( [ 'apierror-invalidtitle', wfEscapeWikiText( $params['title'] ) ] );
 				}
 			} else {
 				$title = Title::newFromText( 'API' );
@@ -82,7 +80,7 @@ class ApiQueryAllMessages extends ApiQueryBase {
 		// Because we sorted the message array earlier, they will appear in a clump:
 		if ( isset( $params['prefix'] ) ) {
 			$skip = false;
-			$messages_filtered = array();
+			$messages_filtered = [];
 			foreach ( $messages_target as $message ) {
 				// === 0: must be at beginning of string (position 0)
 				if ( strpos( $message, $params['prefix'] ) === 0 ) {
@@ -99,7 +97,7 @@ class ApiQueryAllMessages extends ApiQueryBase {
 
 		// Filter messages that contain specified string
 		if ( isset( $params['filter'] ) ) {
-			$messages_filtered = array();
+			$messages_filtered = [];
 			foreach ( $messages_target as $message ) {
 				// !== is used because filter can be at the beginning of the string
 				if ( strpos( $message, $params['filter'] ) !== false ) {
@@ -113,10 +111,15 @@ class ApiQueryAllMessages extends ApiQueryBase {
 		$customiseFilterEnabled = $params['customised'] !== 'all';
 		if ( $customiseFilterEnabled ) {
 			global $wgContLang;
-			$lang = $langObj->getCode();
 
 			$customisedMessages = AllMessagesTablePager::getCustomisedStatuses(
-				array_map( array( $langObj, 'ucfirst' ), $messages_target ), $lang, $lang != $wgContLang->getCode() );
+				array_map(
+					[ $langObj, 'ucfirst' ],
+					$messages_target
+				),
+				$langObj->getCode(),
+				!$langObj->equals( $wgContLang )
+			);
 
 			$customised = $params['customised'] === 'modified';
 		}
@@ -136,8 +139,12 @@ class ApiQueryAllMessages extends ApiQueryBase {
 			}
 
 			if ( !$skip ) {
-				$a = array( 'name' => $message );
-				$args = array();
+				$a = [
+					'name' => $message,
+					'normalizedname' => MessageCache::normalizeKey( $message ),
+				];
+
+				$args = [];
 				if ( isset( $params['args'] ) && count( $params['args'] ) != 0 ) {
 					$args = $params['args'];
 				}
@@ -146,7 +153,7 @@ class ApiQueryAllMessages extends ApiQueryBase {
 					$messageIsCustomised = isset( $customisedMessages['pages'][$langObj->ucfirst( $message )] );
 					if ( $customised === $messageIsCustomised ) {
 						if ( $customised ) {
-							$a['customised'] = '';
+							$a['customised'] = true;
 						}
 					} else {
 						continue;
@@ -156,7 +163,7 @@ class ApiQueryAllMessages extends ApiQueryBase {
 				$msg = wfMessage( $message, $args )->inLanguage( $langObj );
 
 				if ( !$msg->exists() ) {
-					$a['missing'] = '';
+					$a['missing'] = true;
 				} else {
 					// Check if the parser is enabled:
 					if ( $params['enableparser'] ) {
@@ -165,25 +172,25 @@ class ApiQueryAllMessages extends ApiQueryBase {
 						$msgString = $msg->plain();
 					}
 					if ( !$params['nocontent'] ) {
-						ApiResult::setContent( $a, $msgString );
+						ApiResult::setContentValue( $a, 'content', $msgString );
 					}
 					if ( isset( $prop['default'] ) ) {
 						$default = wfMessage( $message )->inLanguage( $langObj )->useDatabase( false );
 						if ( !$default->exists() ) {
-							$a['defaultmissing'] = '';
+							$a['defaultmissing'] = true;
 						} elseif ( $default->plain() != $msgString ) {
 							$a['default'] = $default->plain();
 						}
 					}
 				}
-				$fit = $result->addValue( array( 'query', $this->getModuleName() ), null, $a );
+				$fit = $result->addValue( [ 'query', $this->getModuleName() ], null, $a );
 				if ( !$fit ) {
 					$this->setContinueEnumParameter( 'from', $message );
 					break;
 				}
 			}
 		}
-		$result->setIndexedTagName_internal( array( 'query', $this->getModuleName() ), 'message' );
+		$result->addIndexedTagName( [ 'query', $this->getModuleName() ], 'message' );
 	}
 
 	public function getCacheMode( $params ) {
@@ -200,74 +207,51 @@ class ApiQueryAllMessages extends ApiQueryBase {
 	}
 
 	public function getAllowedParams() {
-		return array(
-			'messages' => array(
+		return [
+			'messages' => [
 				ApiBase::PARAM_DFLT => '*',
 				ApiBase::PARAM_ISMULTI => true,
-			),
-			'prop' => array(
+			],
+			'prop' => [
 				ApiBase::PARAM_ISMULTI => true,
-				ApiBase::PARAM_TYPE => array(
+				ApiBase::PARAM_TYPE => [
 					'default'
-				)
-			),
+				]
+			],
 			'enableparser' => false,
 			'nocontent' => false,
 			'includelocal' => false,
-			'args' => array(
+			'args' => [
 				ApiBase::PARAM_ISMULTI => true,
 				ApiBase::PARAM_ALLOW_DUPLICATES => true,
-			),
-			'filter' => array(),
-			'customised' => array(
+			],
+			'filter' => [],
+			'customised' => [
 				ApiBase::PARAM_DFLT => 'all',
-				ApiBase::PARAM_TYPE => array(
+				ApiBase::PARAM_TYPE => [
 					'all',
 					'modified',
 					'unmodified'
-				)
-			),
+				]
+			],
 			'lang' => null,
 			'from' => null,
 			'to' => null,
 			'title' => null,
 			'prefix' => null,
-		);
+		];
 	}
 
-	public function getParamDescription() {
-		return array(
-			'messages' => 'Which messages to output. "*" (default) means all messages',
-			'prop' => 'Which properties to get',
-			'enableparser' => array( 'Set to enable parser, will preprocess the wikitext of message',
-				'Will substitute magic words, handle templates etc.' ),
-			'nocontent' => 'If set, do not include the content of the messages in the output.',
-			'includelocal' => array( "Also include local messages, i.e. messages that don't exist in the software but do exist as a MediaWiki: page.",
-				"This lists all MediaWiki: pages, so it will also list those that aren't 'really' messages such as Common.js",
-			),
-			'title' => 'Page name to use as context when parsing message (for enableparser option)',
-			'args' => 'Arguments to be substituted into message',
-			'prefix' => 'Return messages with this prefix',
-			'filter' => 'Return only messages with names that contain this string',
-			'customised' => 'Return only messages in this customisation state',
-			'lang' => 'Return messages in this language',
-			'from' => 'Return messages starting at this message',
-			'to' => 'Return messages ending at this message',
-		);
-	}
-
-	public function getDescription() {
-		return 'Return messages from this site.';
-	}
-
-	public function getExamples() {
-		return array(
-			'api.php?action=query&meta=allmessages&amprefix=ipb-',
-			'api.php?action=query&meta=allmessages&ammessages=august|mainpage&amlang=de',
-		);
+	protected function getExamplesMessages() {
+		return [
+			'action=query&meta=allmessages&amprefix=ipb-'
+				=> 'apihelp-query+allmessages-example-ipb',
+			'action=query&meta=allmessages&ammessages=august|mainpage&amlang=de'
+				=> 'apihelp-query+allmessages-example-de',
+		];
 	}
 
 	public function getHelpUrls() {
-		return 'https://www.mediawiki.org/wiki/API:Meta#allmessages_.2F_am';
+		return 'https://www.mediawiki.org/wiki/Special:MyLanguage/API:Allmessages';
 	}
 }

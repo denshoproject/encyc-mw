@@ -1,7 +1,5 @@
 <?php
 /**
- * Request-dependant objects containers.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -17,19 +15,19 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  * http://www.gnu.org/copyleft/gpl.html
  *
- * @since 1.19
- *
  * @author Daniel Friesen
  * @file
  */
+use MediaWiki\MediaWikiServices;
 
 /**
  * An IContextSource implementation which will inherit context from another source
  * but allow individual pieces of context to be changed locally
  * eg: A ContextSource that can inherit from the main RequestContext but have
  *     a different Title instance set on it.
+ * @since 1.19
  */
-class DerivativeContext extends ContextSource {
+class DerivativeContext extends ContextSource implements MutableContext {
 	/**
 	 * @var WebRequest
 	 */
@@ -71,7 +69,11 @@ class DerivativeContext extends ContextSource {
 	private $config;
 
 	/**
-	 * Constructor
+	 * @var Timing
+	 */
+	private $timing;
+
+	/**
 	 * @param IContextSource $context Context to inherit from
 	 */
 	public function __construct( IContextSource $context ) {
@@ -79,17 +81,13 @@ class DerivativeContext extends ContextSource {
 	}
 
 	/**
-	 * Set the SiteConfiguration object
-	 *
-	 * @param Config $s
+	 * @param Config $config
 	 */
-	public function setConfig( Config $s ) {
-		$this->config = $s;
+	public function setConfig( Config $config ) {
+		$this->config = $config;
 	}
 
 	/**
-	 * Get the Config object
-	 *
 	 * @return Config
 	 */
 	public function getConfig() {
@@ -101,17 +99,33 @@ class DerivativeContext extends ContextSource {
 	}
 
 	/**
-	 * Set the WebRequest object
+	 * @deprecated since 1.27 use a StatsdDataFactory from MediaWikiServices (preferably injected)
 	 *
-	 * @param WebRequest $r
+	 * @return IBufferingStatsdDataFactory
 	 */
-	public function setRequest( WebRequest $r ) {
-		$this->request = $r;
+	public function getStats() {
+		return MediaWikiServices::getInstance()->getStatsdDataFactory();
 	}
 
 	/**
-	 * Get the WebRequest object
-	 *
+	 * @return Timing
+	 */
+	public function getTiming() {
+		if ( !is_null( $this->timing ) ) {
+			return $this->timing;
+		} else {
+			return $this->getContext()->getTiming();
+		}
+	}
+
+	/**
+	 * @param WebRequest $request
+	 */
+	public function setRequest( WebRequest $request ) {
+		$this->request = $request;
+	}
+
+	/**
 	 * @return WebRequest
 	 */
 	public function getRequest() {
@@ -123,17 +137,13 @@ class DerivativeContext extends ContextSource {
 	}
 
 	/**
-	 * Set the Title object
-	 *
-	 * @param Title $t
+	 * @param Title $title
 	 */
-	public function setTitle( Title $t ) {
-		$this->title = $t;
+	public function setTitle( Title $title ) {
+		$this->title = $title;
 	}
 
 	/**
-	 * Get the Title object
-	 *
 	 * @return Title|null
 	 */
 	public function getTitle() {
@@ -163,13 +173,11 @@ class DerivativeContext extends ContextSource {
 	}
 
 	/**
-	 * Set the WikiPage object
-	 *
 	 * @since 1.19
-	 * @param WikiPage $p
+	 * @param WikiPage $wikiPage
 	 */
-	public function setWikiPage( WikiPage $p ) {
-		$this->wikipage = $p;
+	public function setWikiPage( WikiPage $wikiPage ) {
+		$this->wikipage = $wikiPage;
 	}
 
 	/**
@@ -190,17 +198,13 @@ class DerivativeContext extends ContextSource {
 	}
 
 	/**
-	 * Set the OutputPage object
-	 *
-	 * @param OutputPage $o
+	 * @param OutputPage $output
 	 */
-	public function setOutput( OutputPage $o ) {
-		$this->output = $o;
+	public function setOutput( OutputPage $output ) {
+		$this->output = $output;
 	}
 
 	/**
-	 * Get the OutputPage object
-	 *
 	 * @return OutputPage
 	 */
 	public function getOutput() {
@@ -212,17 +216,13 @@ class DerivativeContext extends ContextSource {
 	}
 
 	/**
-	 * Set the User object
-	 *
-	 * @param User $u
+	 * @param User $user
 	 */
-	public function setUser( User $u ) {
-		$this->user = $u;
+	public function setUser( User $user ) {
+		$this->user = $user;
 	}
 
 	/**
-	 * Get the User object
-	 *
 	 * @return User
 	 */
 	public function getUser() {
@@ -234,18 +234,16 @@ class DerivativeContext extends ContextSource {
 	}
 
 	/**
-	 * Set the Language object
-	 *
-	 * @param Language|string $l Language instance or language code
+	 * @param Language|string $language Language instance or language code
 	 * @throws MWException
 	 * @since 1.19
 	 */
-	public function setLanguage( $l ) {
-		if ( $l instanceof Language ) {
-			$this->lang = $l;
-		} elseif ( is_string( $l ) ) {
-			$l = RequestContext::sanitizeLangCode( $l );
-			$obj = Language::factory( $l );
+	public function setLanguage( $language ) {
+		if ( $language instanceof Language ) {
+			$this->lang = $language;
+		} elseif ( is_string( $language ) ) {
+			$language = RequestContext::sanitizeLangCode( $language );
+			$obj = Language::factory( $language );
 			$this->lang = $obj;
 		} else {
 			throw new MWException( __METHOD__ . " was passed an invalid type of data." );
@@ -253,8 +251,6 @@ class DerivativeContext extends ContextSource {
 	}
 
 	/**
-	 * Get the Language object
-	 *
 	 * @return Language
 	 * @since 1.19
 	 */
@@ -267,18 +263,14 @@ class DerivativeContext extends ContextSource {
 	}
 
 	/**
-	 * Set the Skin object
-	 *
-	 * @param Skin $s
+	 * @param Skin $skin
 	 */
-	public function setSkin( Skin $s ) {
-		$this->skin = clone $s;
+	public function setSkin( Skin $skin ) {
+		$this->skin = clone $skin;
 		$this->skin->setContext( $this );
 	}
 
 	/**
-	 * Get the Skin object
-	 *
 	 * @return Skin
 	 */
 	public function getSkin() {
@@ -296,10 +288,12 @@ class DerivativeContext extends ContextSource {
 	 * it would set only the original context, and not take
 	 * into account any changes.
 	 *
+	 * @param string|string[]|MessageSpecifier $key Message key, or array of keys,
+	 *   or a MessageSpecifier.
 	 * @param mixed $args,... Arguments to wfMessage
 	 * @return Message
 	 */
-	public function msg() {
+	public function msg( $key ) {
 		$args = func_get_args();
 
 		return call_user_func_array( 'wfMessage', $args )->setContext( $this );

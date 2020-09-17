@@ -2,21 +2,22 @@
 
 $IP = strval( getenv( 'MW_INSTALL_PATH' ) ) !== ''
 	? getenv( 'MW_INSTALL_PATH' )
-	: realpath( dirname( __FILE__ ) . "/../../" );
-// Can use __DIR__ once we drop support for MW 1.19
+	: realpath( __DIR__ . '/../../' );
 
 require "$IP/maintenance/Maintenance.php";
 
-class LU extends Maintenance {
+class Update extends Maintenance {
 	public function __construct() {
 		parent::__construct();
-		$this->mDescription = 'Fetches translation updates to MediaWiki and extensions.';
+		$this->mDescription = 'Fetches translation updates to MediaWiki core, skins and extensions.';
 		$this->addOption(
 			'repoid',
 			'Fetch translations from repositories identified by this',
 			false, /*required*/
 			true /*has arg*/
 		);
+
+		$this->requireExtension( 'LocalisationUpdate' );
 	}
 
 	public function execute() {
@@ -25,7 +26,8 @@ class LU extends Maintenance {
 		ini_set( "max_execution_time", 0 );
 		ini_set( 'memory_limit', -1 );
 
-		global $wgExtensionMessagesFiles, $wgMessagesDirs, $IP;
+		global $IP;
+		global $wgExtensionMessagesFiles;
 		global $wgLocalisationUpdateRepositories;
 		global $wgLocalisationUpdateRepository;
 
@@ -35,9 +37,12 @@ class LU extends Maintenance {
 			return;
 		}
 
-		$finder = new LU_Finder( $wgExtensionMessagesFiles, $wgMessagesDirs, $IP );
-		$readerFactory = new LU_ReaderFactory();
-		$fetcherFactory = new LU_FetcherFactory();
+		$lc = Language::getLocalisationCache();
+		$messagesDirs = $lc->getMessagesDirs();
+
+		$finder = new LocalisationUpdate\Finder( $wgExtensionMessagesFiles, $messagesDirs, $IP );
+		$readerFactory = new LocalisationUpdate\ReaderFactory();
+		$fetcherFactory = new LocalisationUpdate\FetcherFactory();
 
 		$repoid = $this->getOption( 'repoid', $wgLocalisationUpdateRepository );
 		if ( !isset( $wgLocalisationUpdateRepositories[$repoid] ) ) {
@@ -47,13 +52,18 @@ class LU extends Maintenance {
 		}
 		$repos = $wgLocalisationUpdateRepositories[$repoid];
 
+		// output and error methods are protected, hence we add logInfo and logError
+		// public methods, that hopefully won't conflict in the future with the base class.
+		$logger = $this;
+
 		// Do it ;)
-		$updater = new LU_Updater();
+		$updater = new LocalisationUpdate\Updater();
 		$updatedMessages = $updater->execute(
 			$finder,
 			$readerFactory,
 			$fetcherFactory,
-			$repos
+			$repos,
+			$logger
 		);
 
 		// Store it ;)
@@ -69,7 +79,15 @@ class LU extends Maintenance {
 		}
 		$this->output( "Saved $count new translations\n" );
 	}
+
+	public function logInfo( $msg ) {
+		$this->output( $msg . "\n" );
+	}
+
+	public function logError( $msg ) {
+		$this->error( $msg );
+	}
 }
 
-$maintClass = 'LU';
+$maintClass = Update::class;
 require_once RUN_MAINTENANCE_IF_MAIN;

@@ -1,8 +1,6 @@
 <?php
 
 /**
- * Created on August 26, 2014
- *
  * Copyright © 2014 Petr Bena (benapetr@gmail.com)
  *
  * This program is free software; you can redistribute it and/or modify
@@ -39,20 +37,17 @@ class ApiClearHasMsg extends ApiBase {
 	}
 
 	public function mustBePosted() {
-		return false;
+		return true;
 	}
 
-	public function getDescription() {
-		return array( 'Clears the hasmsg flag for current user.' );
-	}
-
-	public function getExamples() {
-		return array(
-			'api.php?action=clearhasmsg' => 'Clears the hasmsg flag for current user',
-		);
+	protected function getExamplesMessages() {
+		return [
+			'action=clearhasmsg'
+				=> 'apihelp-clearhasmsg-example-1',
+		];
 	}
 
 	public function getHelpUrls() {
-		return 'https://www.mediawiki.org/wiki/API:ClearHasMsg';
+		return 'https://www.mediawiki.org/wiki/Special:MyLanguage/API:ClearHasMsg';
 	}
 }

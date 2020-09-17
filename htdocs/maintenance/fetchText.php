@@ -24,6 +24,8 @@
 
 require_once __DIR__ . '/Maintenance.php';
 
+use Wikimedia\Rdbms\IDatabase;
+
 /**
  * Maintenance script used to fetch page text in a subprocess.
  *
@@ -32,7 +34,10 @@ require_once __DIR__ . '/Maintenance.php';
 class FetchText extends Maintenance {
 	public function __construct() {
 		parent::__construct();
-		$this->mDescription = "Fetch the revision text from an old_id";
+		$this->addDescription( "Fetch the raw revision blob from an old_id.\n" .
+			"NOTE: Export transformations are NOT applied. " .
+			"This is left to backupTextPass.php"
+		);
 	}
 
 	/**
@@ -43,10 +48,10 @@ class FetchText extends Maintenance {
 	 *   \n
 	 *   text  (may be empty)
 	 *
-	 * note that that the text string itself is *not* followed by newline
+	 * note that the text string itself is *not* followed by newline
 	 */
 	public function execute() {
-		$db = wfGetDB( DB_SLAVE );
+		$db = $this->getDB( DB_REPLICA );
 		$stdin = $this->getStdin();
 		while ( !feof( $stdin ) ) {
 			$line = fgets( $stdin );
@@ -68,15 +73,15 @@ class FetchText extends Maintenance {
 
 	/**
 	 * May throw a database error if, say, the server dies during query.
-	 * @param DatabaseBase $db
+	 * @param IDatabase $db
 	 * @param int $id The old_id
 	 * @return string
 	 */
 	private function doGetText( $db, $id ) {
 		$id = intval( $id );
 		$row = $db->selectRow( 'text',
-			array( 'old_text', 'old_flags' ),
-			array( 'old_id' => $id ),
+			[ 'old_text', 'old_flags' ],
+			[ 'old_id' => $id ],
 			__METHOD__ );
 		$text = Revision::getRevisionText( $row );
 		if ( $text === false ) {
@@ -87,5 +92,5 @@ class FetchText extends Maintenance {
 	}
 }
 
-$maintClass = "FetchText";
+$maintClass = FetchText::class;
 require_once RUN_MAINTENANCE_IF_MAIN;

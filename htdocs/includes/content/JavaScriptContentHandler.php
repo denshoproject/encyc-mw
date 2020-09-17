@@ -1,7 +1,5 @@
 <?php
 /**
- * Content handler for JavaScript pages.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -23,9 +21,10 @@
 /**
  * Content handler for JavaScript pages.
  *
+ * @todo Create a ScriptContentHandler base class, do highlighting stuff there?
+ *
  * @since 1.21
  * @ingroup Content
- * @todo make ScriptContentHandler base class, do highlighting stuff there?
  */
 class JavaScriptContentHandler extends CodeContentHandler {
 
@@ -33,10 +32,31 @@ class JavaScriptContentHandler extends CodeContentHandler {
 	 * @param string $modelId
 	 */
 	public function __construct( $modelId = CONTENT_MODEL_JAVASCRIPT ) {
-		parent::__construct( $modelId, array( CONTENT_FORMAT_JAVASCRIPT ) );
+		parent::__construct( $modelId, [ CONTENT_FORMAT_JAVASCRIPT ] );
 	}
 
+	/**
+	 * @return string
+	 */
 	protected function getContentClass() {
-		return 'JavaScriptContent';
+		return JavaScriptContent::class;
+	}
+
+	public function supportsRedirects() {
+		return true;
+	}
+
+	/**
+	 * Create a redirect that is also valid JavaScript
+	 *
+	 * @param Title $destination
+	 * @param string $text ignored
+	 * @return JavaScriptContent
+	 */
+	public function makeRedirectContent( Title $destination, $text = '' ) {
+		// The parameters are passed as a string so the / is not url-encoded by wfArrayToCgi
+		$url = $destination->getFullURL( 'action=raw&ctype=text/javascript', false, PROTO_RELATIVE );
+		$class = $this->getContentClass();
+		return new $class( '/* #REDIRECT */' . Xml::encodeJsCall( 'mw.loader.load', [ $url ] ) );
 	}
 }

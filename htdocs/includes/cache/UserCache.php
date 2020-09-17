@@ -25,8 +25,8 @@
  * @since 1.20
  */
 class UserCache {
-	protected $cache = array(); // (uid => property => value)
-	protected $typesCached = array(); // (uid => cache type => 1)
+	protected $cache = []; // (uid => property => value)
+	protected $typesCached = []; // (uid => cache type => 1)
 
 	/**
 	 * @return UserCache
@@ -53,7 +53,7 @@ class UserCache {
 	public function getProp( $userId, $prop ) {
 		if ( !isset( $this->cache[$userId][$prop] ) ) {
 			wfDebug( __METHOD__ . ": querying DB for prop '$prop' for user ID '$userId'.\n" );
-			$this->doQuery( array( $userId ) ); // cache miss
+			$this->doQuery( [ $userId ] ); // cache miss
 		}
 
 		return isset( $this->cache[$userId][$prop] )
@@ -79,11 +79,11 @@ class UserCache {
 	 * @param array $options Option flags; include 'userpage' and 'usertalk'
 	 * @param string $caller The calling method
 	 */
-	public function doQuery( array $userIds, $options = array(), $caller = '' ) {
-		wfProfileIn( __METHOD__ );
+	public function doQuery( array $userIds, $options = [], $caller = '' ) {
+		global $wgActorTableSchemaMigrationStage;
 
-		$usersToCheck = array();
-		$usersToQuery = array();
+		$usersToCheck = [];
+		$usersToQuery = [];
 
 		$userIds = array_unique( $userIds );
 
@@ -101,22 +101,35 @@ class UserCache {
 
 		// Lookup basic info for users not yet loaded...
 		if ( count( $usersToQuery ) ) {
-			$dbr = wfGetDB( DB_SLAVE );
-			$table = array( 'user' );
-			$conds = array( 'user_id' => $usersToQuery );
-			$fields = array( 'user_name', 'user_real_name', 'user_registration', 'user_id' );
+			$dbr = wfGetDB( DB_REPLICA );
+			$tables = [ 'user' ];
+			$conds = [ 'user_id' => $usersToQuery ];
+			$fields = [ 'user_name', 'user_real_name', 'user_registration', 'user_id' ];
+			$joinConds = [];
+
+			if ( $wgActorTableSchemaMigrationStage > MIGRATION_OLD ) {
+				$tables[] = 'actor';
+				$fields[] = 'actor_id';
+				$joinConds['actor'] = [
+					$wgActorTableSchemaMigrationStage === MIGRATION_NEW ? 'JOIN' : 'LEFT JOIN',
+					[ 'actor_user = user_id' ]
+				];
+			}
 
 			$comment = __METHOD__;
 			if ( strval( $caller ) !== '' ) {
 				$comment .= "/$caller";
 			}
 
-			$res = $dbr->select( $table, $fields, $conds, $comment );
+			$res = $dbr->select( $tables, $fields, $conds, $comment, [], $joinConds );
 			foreach ( $res as $row ) { // load each user into cache
 				$userId = (int)$row->user_id;
 				$this->cache[$userId]['name'] = $row->user_name;
 				$this->cache[$userId]['real_name'] = $row->user_real_name;
 				$this->cache[$userId]['registration'] = $row->user_registration;
+				if ( $wgActorTableSchemaMigrationStage > MIGRATION_OLD ) {
+					$this->cache[$userId]['actor'] = $row->actor_id;
+				}
 				$usersToCheck[$userId] = $row->user_name;
 			}
 		}
@@ -124,17 +137,15 @@ class UserCache {
 		$lb = new LinkBatch();
 		foreach ( $usersToCheck as $userId => $name ) {
 			if ( $this->queryNeeded( $userId, 'userpage', $options ) ) {
-				$lb->add( NS_USER, str_replace( ' ', '_', $row->user_name ) );
+				$lb->add( NS_USER, $name );
 				$this->typesCached[$userId]['userpage'] = 1;
 			}
 			if ( $this->queryNeeded( $userId, 'usertalk', $options ) ) {
-				$lb->add( NS_USER_TALK, str_replace( ' ', '_', $row->user_name ) );
+				$lb->add( NS_USER_TALK, $name );
 				$this->typesCached[$userId]['usertalk'] = 1;
 			}
 		}
 		$lb->execute();
-
-		wfProfileOut( __METHOD__ );
 	}
 
 	/**

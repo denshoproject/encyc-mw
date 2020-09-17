@@ -18,7 +18,6 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @license GPL 2+
  * @author Daniel Kinzler
  */
 
@@ -29,6 +28,7 @@
  * forms to be used in the database, in urls, in wikitext, etc.
  *
  * @see https://www.mediawiki.org/wiki/Requests_for_comment/TitleValue
+ * @since 1.23
  */
 interface TitleParser {
 	/**

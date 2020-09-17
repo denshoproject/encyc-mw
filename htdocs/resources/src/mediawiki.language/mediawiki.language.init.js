@@ -32,6 +32,7 @@
 		 *
 		 *  - `digitTransformTable`
 		 *  - `separatorTransformTable`
+		 *  - `minimumGroupingDigits`
 		 *  - `grammarForms`
 		 *  - `pluralRules`
 		 *  - `digitGroupingPattern`
@@ -54,8 +55,9 @@
 		 */
 		getData: function ( langCode, dataKey ) {
 			var langData = mw.language.data;
-			if ( langData && langData[langCode] instanceof mw.Map ) {
-				return langData[langCode].get( dataKey );
+			langCode = langCode.toLowerCase();
+			if ( langData && langData[ langCode ] instanceof mw.Map ) {
+				return langData[ langCode ].get( dataKey );
 			}
 			return undefined;
 		},
@@ -71,10 +73,11 @@
 		 */
 		setData: function ( langCode, dataKey, value ) {
 			var langData = mw.language.data;
-			if ( !( langData[langCode] instanceof mw.Map ) ) {
-				langData[langCode] = new mw.Map();
+			langCode = langCode.toLowerCase();
+			if ( !( langData[ langCode ] instanceof mw.Map ) ) {
+				langData[ langCode ] = new mw.Map();
 			}
-			langData[langCode].set( dataKey, value );
+			langData[ langCode ].set( dataKey, value );
 		}
 	};
 

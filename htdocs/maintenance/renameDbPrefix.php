@@ -62,7 +62,7 @@ class RenameDbPrefix extends Maintenance {
 		}
 
 		if ( $old === false || $new === false ) {
-			$this->error( "Invalid prefix!", true );
+			$this->fatalError( "Invalid prefix!" );
 		}
 		if ( $old === $new ) {
 			$this->output( "Same prefix. Nothing to rename!\n", true );
@@ -71,7 +71,7 @@ class RenameDbPrefix extends Maintenance {
 		$this->output( "Renaming DB prefix for tables of $wgDBname from '$old' to '$new'\n" );
 		$count = 0;
 
-		$dbw = wfGetDB( DB_MASTER );
+		$dbw = $this->getDB( DB_MASTER );
 		$res = $dbw->query( "SHOW TABLES " . $dbw->buildLike( $old, $dbw->anyString() ) );
 		foreach ( $res as $row ) {
 			// XXX: odd syntax. MySQL outputs an oddly cased "Tables of X"
@@ -90,5 +90,5 @@ class RenameDbPrefix extends Maintenance {
 	}
 }
 
-$maintClass = "RenameDbPrefix";
+$maintClass = RenameDbPrefix::class;
 require_once RUN_MAINTENANCE_IF_MAIN;

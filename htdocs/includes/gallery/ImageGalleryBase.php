@@ -30,39 +30,47 @@
 abstract class ImageGalleryBase extends ContextSource {
 	/**
 	 * @var array Gallery images
-	 * @deprecated since 1.23 (was declared "var") and will be removed in 1.24
 	 */
-	public $mImages;
+	protected $mImages;
 
 	/**
 	 * @var bool Whether to show the filesize in bytes in categories
-	 * @deprecated since 1.23 (was declared "var") and will be removed in 1.24
 	 */
-	public $mShowBytes;
+	protected $mShowBytes;
+
+	/**
+	 * @var bool Whether to show the dimensions in categories
+	 */
+	protected $mShowDimensions;
 
 	/**
 	 * @var bool Whether to show the filename. Default: true
-	 * @deprecated since 1.23 (was declared "var") and will be removed in 1.24
 	 */
-	public $mShowFilename;
+	protected $mShowFilename;
 
 	/**
 	 * @var string Gallery mode. Default: traditional
-	 * @deprecated since 1.23 (was declared "var") and will be removed in 1.24
 	 */
-	public $mMode;
+	protected $mMode;
 
 	/**
 	 * @var bool|string Gallery caption. Default: false
-	 * @deprecated since 1.23 (was declared "var") and will be removed in 1.24
 	 */
-	public $mCaption = false;
+	protected $mCaption = false;
+
+	/**
+	 * Length to truncate filename to in caption when using "showfilename".
+	 * A value of 'true' will truncate the filename to one line using CSS
+	 * and will be the behaviour after deprecation.
+	 *
+	 * @var bool|int
+	 */
+	protected $mCaptionLength = true;
 
 	/**
 	 * @var bool Hide blacklisted images?
-	 * @deprecated since 1.23 (was declared "var") and will be removed in 1.24
 	 */
-	public $mHideBadImages;
+	protected $mHideBadImages;
 
 	/**
 	 * @var Parser Registered parser object for output callbacks
@@ -76,7 +84,7 @@ abstract class ImageGalleryBase extends ContextSource {
 	protected $contextTitle = false;
 
 	/** @var array */
-	protected $mAttribs = array();
+	protected $mAttribs = [];
 
 	/** @var bool */
 	static private $modeMapping = false;
@@ -97,14 +105,15 @@ abstract class ImageGalleryBase extends ContextSource {
 			$context = RequestContext::getMainAndWarn( __METHOD__ );
 		}
 		if ( !$mode ) {
-			$galleryOpions = $context->getConfig()->get( 'GalleryOptions' );
-			$mode = $galleryOpions['mode'];
+			$galleryOptions = $context->getConfig()->get( 'GalleryOptions' );
+			$mode = $galleryOptions['mode'];
 		}
 
 		$mode = $wgContLang->lc( $mode );
 
 		if ( isset( self::$modeMapping[$mode] ) ) {
-			return new self::$modeMapping[$mode]( $mode, $context );
+			$class = self::$modeMapping[$mode];
+			return new $class( $mode, $context );
 		} else {
 			throw new MWException( "No gallery class registered for mode $mode" );
 		}
@@ -112,15 +121,16 @@ abstract class ImageGalleryBase extends ContextSource {
 
 	private static function loadModes() {
 		if ( self::$modeMapping === false ) {
-			self::$modeMapping = array(
-				'traditional' => 'TraditionalImageGallery',
-				'nolines' => 'NolinesImageGallery',
-				'packed' => 'PackedImageGallery',
-				'packed-hover' => 'PackedHoverImageGallery',
-				'packed-overlay' => 'PackedOverlayImageGallery',
-			);
+			self::$modeMapping = [
+				'traditional' => TraditionalImageGallery::class,
+				'nolines' => NolinesImageGallery::class,
+				'packed' => PackedImageGallery::class,
+				'packed-hover' => PackedHoverImageGallery::class,
+				'packed-overlay' => PackedOverlayImageGallery::class,
+				'slideshow' => SlideshowImageGallery::class,
+			];
 			// Allow extensions to make a new gallery format.
-			wfRunHooks( 'GalleryGetModes', self::$modeMapping );
+			Hooks::run( 'GalleryGetModes', [ &self::$modeMapping ] );
 		}
 	}
 
@@ -138,8 +148,9 @@ abstract class ImageGalleryBase extends ContextSource {
 		}
 
 		$galleryOptions = $this->getConfig()->get( 'GalleryOptions' );
-		$this->mImages = array();
+		$this->mImages = [];
 		$this->mShowBytes = $galleryOptions['showBytes'];
+		$this->mShowDimensions = $galleryOptions['showDimensions'];
 		$this->mShowFilename = true;
 		$this->mParser = false;
 		$this->mHideBadImages = false;
@@ -175,7 +186,7 @@ abstract class ImageGalleryBase extends ContextSource {
 	/**
 	 * Set the caption (as plain text)
 	 *
-	 * @param string $caption Caption
+	 * @param string $caption
 	 */
 	function setCaption( $caption ) {
 		$this->mCaption = htmlspecialchars( $caption );
@@ -184,7 +195,7 @@ abstract class ImageGalleryBase extends ContextSource {
 	/**
 	 * Set the caption (as HTML)
 	 *
-	 * @param string $caption Caption
+	 * @param string $caption
 	 */
 	public function setCaptionHtml( $caption ) {
 		$this->mCaption = $caption;
@@ -205,22 +216,26 @@ abstract class ImageGalleryBase extends ContextSource {
 	/**
 	 * Set how wide each image will be, in pixels.
 	 *
-	 * @param int $num Integer > 0; invalid numbers will be ignored
+	 * @param string $num Number. Unit other than 'px is invalid. Invalid numbers
+	 *   and those below 0 are ignored.
 	 */
 	public function setWidths( $num ) {
-		if ( $num > 0 ) {
-			$this->mWidths = (int)$num;
+		$parsed = Parser::parseWidthParam( $num, false );
+		if ( isset( $parsed['width'] ) && $parsed['width'] > 0 ) {
+			$this->mWidths = $parsed['width'];
 		}
 	}
 
 	/**
 	 * Set how high each image will be, in pixels.
 	 *
-	 * @param int $num Integer > 0; invalid numbers will be ignored
+	 * @param string $num Number. Unit other than 'px is invalid. Invalid numbers
+	 *   and those below 0 are ignored.
 	 */
 	public function setHeights( $num ) {
-		if ( $num > 0 ) {
-			$this->mHeights = (int)$num;
+		$parsed = Parser::parseWidthParam( $num, false );
+		if ( isset( $parsed['width'] ) && $parsed['width'] > 0 ) {
+			$this->mHeights = $parsed['width'];
 		}
 	}
 
@@ -244,12 +259,12 @@ abstract class ImageGalleryBase extends ContextSource {
 	 * @param string $link Override image link (optional)
 	 * @param array $handlerOpts Array of options for image handler (aka page number)
 	 */
-	function add( $title, $html = '', $alt = '', $link = '', $handlerOpts = array() ) {
+	function add( $title, $html = '', $alt = '', $link = '', $handlerOpts = [] ) {
 		if ( $title instanceof File ) {
 			// Old calling convention
 			$title = $title->getTitle();
 		}
-		$this->mImages[] = array( $title, $html, $alt, $link, $handlerOpts );
+		$this->mImages[] = [ $title, $html, $alt, $link, $handlerOpts ];
 		wfDebug( 'ImageGallery::add ' . $title->getText() . "\n" );
 	}
 
@@ -263,12 +278,12 @@ abstract class ImageGalleryBase extends ContextSource {
 	 * @param string $link Override image link (optional)
 	 * @param array $handlerOpts Array of options for image handler (aka page number)
 	 */
-	function insert( $title, $html = '', $alt = '', $link = '', $handlerOpts = array() ) {
+	function insert( $title, $html = '', $alt = '', $link = '', $handlerOpts = [] ) {
 		if ( $title instanceof File ) {
 			// Old calling convention
 			$title = $title->getTitle();
 		}
-		array_unshift( $this->mImages, array( &$title, $html, $alt, $link, $handlerOpts ) );
+		array_unshift( $this->mImages, [ &$title, $html, $alt, $link, $handlerOpts ] );
 	}
 
 	/**
@@ -285,6 +300,16 @@ abstract class ImageGalleryBase extends ContextSource {
 	 */
 	function isEmpty() {
 		return empty( $this->mImages );
+	}
+
+	/**
+	 * Enable/Disable showing of the dimensions of an image in the gallery.
+	 * Enabled by default.
+	 *
+	 * @param bool $f Set to false to disable
+	 */
+	function setShowDimensions( $f ) {
+		$this->mShowDimensions = (bool)$f;
 	}
 
 	/**

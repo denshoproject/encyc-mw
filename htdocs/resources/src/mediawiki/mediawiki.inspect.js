@@ -4,28 +4,39 @@
  * @author Ori Livneh
  * @since 1.22
  */
-/*jshint devel:true */
+
+/* eslint-disable no-console */
+
 ( function ( mw, $ ) {
+
+	var inspect,
+		byteLength = require( 'mediawiki.String' ).byteLength,
+		hasOwn = Object.prototype.hasOwnProperty;
 
 	function sortByProperty( array, prop, descending ) {
 		var order = descending ? -1 : 1;
 		return array.sort( function ( a, b ) {
-			return a[prop] > b[prop] ? order : a[prop] < b[prop] ? -order : 0;
+			return a[ prop ] > b[ prop ] ? order : a[ prop ] < b[ prop ] ? -order : 0;
 		} );
 	}
 
 	function humanSize( bytes ) {
+		var i,
+			units = [ '', ' KiB', ' MiB', ' GiB', ' TiB', ' PiB' ];
+
 		if ( !$.isNumeric( bytes ) || bytes === 0 ) { return bytes; }
-		var i = 0, units = [ '', ' kB', ' MB', ' GB', ' TB', ' PB' ];
-		for ( ; bytes >= 1024; bytes /= 1024 ) { i++; }
-		return bytes.toFixed( 1 ) + units[i];
+
+		for ( i = 0; bytes >= 1024; bytes /= 1024 ) { i++; }
+		// Maintain one decimal for kB and above, but don't
+		// add ".0" for bytes.
+		return bytes.toFixed( i > 0 ? 1 : 0 ) + units[ i ];
 	}
 
 	/**
 	 * @class mw.inspect
 	 * @singleton
 	 */
-	var inspect = {
+	inspect = {
 
 		/**
 		 * Return a map of all dependency relationships between loaded modules.
@@ -34,17 +45,22 @@
 		 *  two properties, 'requires' and 'requiredBy'.
 		 */
 		getDependencyGraph: function () {
-			var modules = inspect.getLoadedModules(), graph = {};
+			var modules = inspect.getLoadedModules(),
+				graph = {};
 
-			$.each( modules, function ( moduleIndex, moduleName ) {
-				var dependencies = mw.loader.moduleRegistry[moduleName].dependencies || [];
+			modules.forEach( function ( moduleName ) {
+				var dependencies = mw.loader.moduleRegistry[ moduleName ].dependencies || [];
 
-				graph[moduleName] = graph[moduleName] || { requiredBy: [] };
-				graph[moduleName].requires = dependencies;
+				if ( !hasOwn.call( graph, moduleName ) ) {
+					graph[ moduleName ] = { requiredBy: [] };
+				}
+				graph[ moduleName ].requires = dependencies;
 
-				$.each( dependencies, function ( depIndex, depName ) {
-					graph[depName] = graph[depName] || { requiredBy: [] };
-					graph[depName].requiredBy.push( moduleName );
+				dependencies.forEach( function ( depName ) {
+					if ( !hasOwn.call( graph, depName ) ) {
+						graph[ depName ] = { requiredBy: [] };
+					}
+					graph[ depName ].requiredBy.push( moduleName );
 				} );
 			} );
 			return graph;
@@ -58,29 +74,57 @@
 		 */
 		getModuleSize: function ( moduleName ) {
 			var module = mw.loader.moduleRegistry[ moduleName ],
-				payload = 0;
+				args, i, size;
 
-			if ( mw.loader.getState( moduleName ) !== 'ready' ) {
+			if ( module.state !== 'ready' ) {
 				return null;
 			}
 
 			if ( !module.style && !module.script ) {
-				return null;
+				return 0;
 			}
 
-			// Tally CSS
-			if ( module.style && $.isArray( module.style.css ) ) {
-				$.each( module.style.css, function ( i, stylesheet ) {
-					payload += $.byteLength( stylesheet );
-				} );
+			function getFunctionBody( func ) {
+				return String( func )
+					// To ensure a deterministic result, replace the start of the function
+					// declaration with a fixed string. For example, in Chrome 55, it seems
+					// V8 seemingly-at-random decides to sometimes put a line break between
+					// the opening brace and first statement of the function body. T159751.
+					.replace( /^\s*function\s*\([^)]*\)\s*{\s*/, 'function(){' )
+					.replace( /\s*}\s*$/, '}' );
 			}
 
-			// Tally JavaScript
-			if ( $.isFunction( module.script ) ) {
-				payload += $.byteLength( module.script.toString() );
+			// Based on the load.php response for this module.
+			// For example: `mw.loader.implement("example", function(){}, {"css":[".x{color:red}"]});`
+			// @see mw.loader.store.set().
+			args = [
+				moduleName,
+				module.script,
+				module.style,
+				module.messages,
+				module.templates
+			];
+			// Trim trailing null or empty object, as load.php would have done.
+			// @see ResourceLoader::makeLoaderImplementScript and ResourceLoader::trimArray.
+			i = args.length;
+			while ( i-- ) {
+				if ( args[ i ] === null || ( $.isPlainObject( args[ i ] ) && $.isEmptyObject( args[ i ] ) ) ) {
+					args.splice( i, 1 );
+				} else {
+					break;
+				}
 			}
 
-			return payload;
+			size = 0;
+			for ( i = 0; i < args.length; i++ ) {
+				if ( typeof args[ i ] === 'function' ) {
+					size += byteLength( getFunctionBody( args[ i ] ) );
+				} else {
+					size += byteLength( JSON.stringify( args[ i ] ) );
+				}
+			}
+
+			return size;
 		},
 
 		/**
@@ -89,25 +133,27 @@
 		 * document.
 		 *
 		 * @param {string} css CSS source
-		 * @return Selector counts
+		 * @return {Object} Selector counts
 		 * @return {number} return.selectors Total number of selectors
 		 * @return {number} return.matched Number of matched selectors
 		 */
 		auditSelectors: function ( css ) {
 			var selectors = { total: 0, matched: 0 },
-				style = document.createElement( 'style' ),
-				sheet, rules;
+				style = document.createElement( 'style' );
 
 			style.textContent = css;
 			document.body.appendChild( style );
-			// Standards-compliant browsers use .sheet.cssRules, IE8 uses .styleSheet.rules…
-			sheet = style.sheet || style.styleSheet;
-			rules = sheet.cssRules || sheet.rules;
-			$.each( rules, function ( index, rule ) {
+			$.each( style.sheet.cssRules, function ( index, rule ) {
 				selectors.total++;
-				if ( document.querySelector( rule.selectorText ) !== null ) {
-					selectors.matched++;
-				}
+				// document.querySelector() on prefixed pseudo-elements can throw exceptions
+				// in Firefox and Safari. Ignore these exceptions.
+				// https://bugs.webkit.org/show_bug.cgi?id=149160
+				// https://bugzilla.mozilla.org/show_bug.cgi?id=1204880
+				try {
+					if ( document.querySelector( rule.selectorText ) !== null ) {
+						selectors.matched++;
+					}
+				} catch ( e ) {}
 			} );
 			document.body.removeChild( style );
 			return selectors;
@@ -119,7 +165,7 @@
 		 * @return {Array} List of module names
 		 */
 		getLoadedModules: function () {
-			return $.grep( mw.loader.getModuleNames(), function ( module ) {
+			return mw.loader.getModuleNames().filter( function ( module ) {
 				return mw.loader.getState( module ) === 'ready';
 			} );
 		},
@@ -138,6 +184,7 @@
 				// Use Function.prototype#call to force an exception on Firefox,
 				// which doesn't define console#table but doesn't complain if you
 				// try to invoke it.
+				// eslint-disable-next-line no-useless-call
 				console.table.call( console, data );
 				return;
 			} catch ( e ) {}
@@ -152,7 +199,7 @@
 		 * Generate and print one more reports. When invoked with no arguments,
 		 * print all reports.
 		 *
-		 * @param {string...} [reports] Report names to run, or unset to print
+		 * @param {...string} [reports] Report names to run, or unset to print
 		 *  all available reports.
 		 */
 		runReports: function () {
@@ -160,8 +207,8 @@
 				Array.prototype.slice.call( arguments ) :
 				$.map( inspect.reports, function ( v, k ) { return k; } );
 
-			$.each( reports, function ( index, name ) {
-				inspect.dumpTable( inspect.reports[name]() );
+			reports.forEach( function ( name ) {
+				inspect.dumpTable( inspect.reports[ name ]() );
 			} );
 		},
 
@@ -173,10 +220,12 @@
 			/**
 			 * Generate a breakdown of all loaded modules and their size in
 			 * kilobytes. Modules are ordered from largest to smallest.
+			 *
+			 * @return {Object[]} Size reports
 			 */
 			size: function () {
 				// Map each module to a descriptor object.
-				var modules = $.map( inspect.getLoadedModules(), function ( module ) {
+				var modules = inspect.getLoadedModules().map( function ( module ) {
 					return {
 						name: module,
 						size: inspect.getModuleSize( module )
@@ -187,7 +236,8 @@
 				sortByProperty( modules, 'size', true );
 
 				// Convert size to human-readable string.
-				$.each( modules, function ( i, module ) {
+				modules.forEach( function ( module ) {
+					module.sizeInBytes = module.size;
 					module.size = humanSize( module.size );
 				} );
 
@@ -197,12 +247,14 @@
 			/**
 			 * For each module with styles, count the number of selectors, and
 			 * count how many match against some element currently in the DOM.
+			 *
+			 * @return {Object[]} CSS reports
 			 */
 			css: function () {
 				var modules = [];
 
-				$.each( inspect.getLoadedModules(), function ( index, name ) {
-					var css, stats, module = mw.loader.moduleRegistry[name];
+				inspect.getLoadedModules().forEach( function ( name ) {
+					var css, stats, module = mw.loader.moduleRegistry[ name ];
 
 					try {
 						css = module.style.css.join();
@@ -214,7 +266,7 @@
 						allSelectors: stats.total,
 						matchedSelectors: stats.matched,
 						percentMatched: stats.total !== 0 ?
-							( stats.matched / stats.total * 100 ).toFixed( 2 )  + '%' : null
+							( stats.matched / stats.total * 100 ).toFixed( 2 ) + '%' : null
 					} );
 				} );
 				sortByProperty( modules, 'allSelectors', true );
@@ -225,6 +277,8 @@
 			 * Report stats on mw.loader.store: the number of localStorage
 			 * cache hits and misses, the number of items purged from the
 			 * cache, and the total size of the module blob in localStorage.
+			 *
+			 * @return {Object[]} Store stats
 			 */
 			store: function () {
 				var raw, stats = { enabled: mw.loader.store.enabled };
@@ -232,10 +286,11 @@
 					$.extend( stats, mw.loader.store.stats );
 					try {
 						raw = localStorage.getItem( mw.loader.store.getStoreKey() );
-						stats.totalSize = humanSize( $.byteLength( raw ) );
+						stats.totalSizeInBytes = byteLength( raw );
+						stats.totalSize = humanSize( byteLength( raw ) );
 					} catch ( e ) {}
 				}
-				return [stats];
+				return [ stats ];
 			}
 		},
 
@@ -249,12 +304,11 @@
 		 */
 		grep: function ( pattern ) {
 			if ( typeof pattern.test !== 'function' ) {
-				// Based on Y.Escape.regex from YUI v3.15.0
-				pattern = new RegExp( pattern.replace( /[\-$\^*()+\[\]{}|\\,.?\s]/g, '\\$&' ), 'g' );
+				pattern = new RegExp( mw.RegExp.escape( pattern ), 'g' );
 			}
 
-			return $.grep( inspect.getLoadedModules(), function ( moduleName ) {
-				var module = mw.loader.moduleRegistry[moduleName];
+			return inspect.getLoadedModules().filter( function ( moduleName ) {
+				var module = mw.loader.moduleRegistry[ moduleName ];
 
 				// Grep module's JavaScript
 				if ( $.isFunction( module.script ) && pattern.test( module.script.toString() ) ) {
@@ -263,8 +317,8 @@
 
 				// Grep module's CSS
 				if (
-					$.isPlainObject( module.style ) && $.isArray( module.style.css )
-					&& pattern.test( module.style.css.join( '' ) )
+					$.isPlainObject( module.style ) && Array.isArray( module.style.css ) &&
+					pattern.test( module.style.css.join( '' ) )
 				) {
 					// Module's CSS source matches
 					return true;

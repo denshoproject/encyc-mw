@@ -3,7 +3,9 @@
 		"authors": [
 			"Britscher",
 			"Gaj777",
-			"Przemub"
+			"Przemub",
+			"Krol111",
+			"Przem(1)s"
 		]
 	},
 	"vector-action-addsection": "Nowo tajla",
@@ -16,5 +18,6 @@
 	"vector-view-edit": "Sprowjej",
 	"vector-view-history": "Uobocz gyszichta",
 	"vector-view-view": "Czytej",
-	"vector-view-viewsource": "Zdrzůdłowy tekst"
+	"vector-view-viewsource": "Zdrzůdłowy tekst",
+	"vector-more-actions": "Wiyncyj"
 }

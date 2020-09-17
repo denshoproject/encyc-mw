@@ -1,7 +1,5 @@
 <?php
 /**
- * Resource loader module for user customizations.
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -23,71 +21,67 @@
  */
 
 /**
- * Module for user customizations
+ * Module for user customizations scripts
  */
 class ResourceLoaderUserModule extends ResourceLoaderWikiModule {
 
-	/* Protected Members */
-
 	protected $origin = self::ORIGIN_USER_INDIVIDUAL;
-
-	/* Protected Methods */
+	protected $targets = [ 'desktop', 'mobile' ];
 
 	/**
 	 * @param ResourceLoaderContext $context
-	 * @return array
+	 * @return array List of pages
 	 */
 	protected function getPages( ResourceLoaderContext $context ) {
-		$username = $context->getUser();
-
-		if ( $username === null ) {
-			return array();
+		$config = $this->getConfig();
+		$user = $context->getUserObj();
+		if ( $user->isAnon() ) {
+			return [];
 		}
 
-		$allowUserJs = $this->getConfig()->get( 'AllowUserJs' );
-		$allowUserCss = $this->getConfig()->get( 'AllowUserCss' );
+		// Use localised/normalised variant to ensure $excludepage matches
+		$userPage = $user->getUserPage()->getPrefixedDBkey();
+		$pages = [];
 
-		if ( !$allowUserJs && !$allowUserCss ) {
-			return array();
+		if ( $config->get( 'AllowUserJs' ) ) {
+			$pages["$userPage/common.js"] = [ 'type' => 'script' ];
+			$pages["$userPage/" . $context->getSkin() . '.js'] = [ 'type' => 'script' ];
 		}
 
-		// Get the normalized title of the user's user page
-		$userpageTitle = Title::makeTitleSafe( NS_USER, $username );
-
-		if ( !$userpageTitle instanceof Title ) {
-			return array();
+		// User group pages are maintained site-wide and enabled with site JS/CSS.
+		if ( $config->get( 'UseSiteJs' ) ) {
+			foreach ( $user->getEffectiveGroups() as $group ) {
+				if ( $group == '*' ) {
+					continue;
+				}
+				$pages["MediaWiki:Group-$group.js"] = [ 'type' => 'script' ];
+			}
 		}
 
-		$userpage = $userpageTitle->getPrefixedDBkey(); // Needed so $excludepages works
-
-		$pages = array();
-		if ( $allowUserJs ) {
-			$pages["$userpage/common.js"] = array( 'type' => 'script' );
-			$pages["$userpage/" . $context->getSkin() . '.js'] = array( 'type' => 'script' );
-		}
-		if ( $allowUserCss ) {
-			$pages["$userpage/common.css"] = array( 'type' => 'style' );
-			$pages["$userpage/" . $context->getSkin() . '.css'] = array( 'type' => 'style' );
-		}
-
-		// Hack for bug 26283: if we're on a preview page for a CSS/JS page,
-		// we need to exclude that page from this module. In that case, the excludepage
-		// parameter will be set to the name of the page we need to exclude.
+		// Hack for T28283: Allow excluding pages for preview on a CSS/JS page.
+		// The excludepage parameter is set by OutputPage.
 		$excludepage = $context->getRequest()->getVal( 'excludepage' );
 		if ( isset( $pages[$excludepage] ) ) {
-			// This works because $excludepage is generated with getPrefixedDBkey(),
-			// just like the keys in $pages[] above
 			unset( $pages[$excludepage] );
 		}
+
 		return $pages;
 	}
 
-	/* Methods */
-
 	/**
+	 * Get group name
+	 *
 	 * @return string
 	 */
 	public function getGroup() {
 		return 'user';
+	}
+
+	/**
+	 * @param ResourceLoaderContext|null $context
+	 * @return array
+	 */
+	public function getDependencies( ResourceLoaderContext $context = null ) {
+		return [ 'user.styles' ];
 	}
 }

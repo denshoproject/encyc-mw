@@ -1,3 +1,4 @@
+
 PROJECT=encyc
 APP=encycmw
 USER=encyc
@@ -15,6 +16,7 @@ DEBIAN_RELEASE_TAG = deb$(shell lsb_release -sr | cut -c1)
 
 INSTALL_BASE=/opt
 INSTALLDIR=$(INSTALL_BASE)/encyc-mw
+IMAGES_DIR=$(INSTALLDIR)/htdocs/images
 
 CONF_BASE=/etc/encyc
 CONF_PRODUCTION=$(CONF_BASE)/LocalSettings.php-1.24
@@ -76,7 +78,11 @@ clean-app: clean-encyc-mw
 install-encyc-mw:
 	@echo ""
 	@echo "encyc-mw --------------------------------------------------------------"
-	apt-get --assume-yes install imagemagick libjpeg-turbo-progs nginx php-pear php-cgi php-cli php-fpm php-mysql tidy
+	apt-get --assume-yes install imagemagick libjpeg-turbo-progs memcached nginx php-pear php-cgi php-cli php-fpm php-mbstring php-mysql tidy
+# images dir
+	-mkdir $(IMAGES_DIR)
+	chown -R root.www-data $(IMAGES_DIR)
+	chmod 775 $(IMAGES_DIR)
 
 test-encyc-mw:
 

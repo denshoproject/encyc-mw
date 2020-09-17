@@ -18,7 +18,7 @@ $fallback = 'ckb';
 
 $rtl = true;
 
-$digitTransformTable = array(
+$digitTransformTable = [
 	'0' => '٠', # &#x0660;
 	'1' => '١', # &#x0661;
 	'2' => '٢', # &#x0662;
@@ -29,7 +29,9 @@ $digitTransformTable = array(
 	'7' => '٧', # &#x0667;
 	'8' => '٨', # &#x0668;
 	'9' => '٩', # &#x0669;
-	'.' => '٫', # &#x066b; wrong table ?
-	',' => '٬', # &#x066c;
-);
+];
 
+$separatorTransformTable = [
+	'.' => '٫', # &#x066b;
+	',' => '٬', # &#x066c;
+];

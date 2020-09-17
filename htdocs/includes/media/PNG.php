@@ -30,7 +30,7 @@ class PNGHandler extends BitmapHandler {
 	const BROKEN_FILE = '0';
 
 	/**
-	 * @param File $image
+	 * @param File|FSFile $image
 	 * @param string $filename
 	 * @return string
 	 */
@@ -49,15 +49,16 @@ class PNGHandler extends BitmapHandler {
 
 	/**
 	 * @param File $image
+	 * @param bool|IContextSource $context Context to use (optional)
 	 * @return array|bool
 	 */
-	function formatMetadata( $image ) {
+	function formatMetadata( $image, $context = false ) {
 		$meta = $this->getCommonMetaArray( $image );
 		if ( count( $meta ) === 0 ) {
 			return false;
 		}
 
-		return $this->formatMetadataHelper( $meta );
+		return $this->formatMetadataHelper( $meta, $context );
 	}
 
 	/**
@@ -70,11 +71,11 @@ class PNGHandler extends BitmapHandler {
 		$meta = $image->getMetadata();
 
 		if ( !$meta ) {
-			return array();
+			return [];
 		}
 		$meta = unserialize( $meta );
 		if ( !isset( $meta['metadata'] ) ) {
-			return array();
+			return [];
 		}
 		unset( $meta['metadata']['_MW_PNG_VERSION'] );
 
@@ -111,15 +112,14 @@ class PNGHandler extends BitmapHandler {
 	}
 
 	function isMetadataValid( $image, $metadata ) {
-
 		if ( $metadata === self::BROKEN_FILE ) {
 			// Do not repetitivly regenerate metadata on broken file.
 			return self::METADATA_GOOD;
 		}
 
-		wfSuppressWarnings();
+		Wikimedia\suppressWarnings();
 		$data = unserialize( $metadata );
-		wfRestoreWarnings();
+		Wikimedia\restoreWarnings();
 
 		if ( !$data || !is_array( $data ) ) {
 			wfDebug( __METHOD__ . " invalid png metadata\n" );
@@ -146,15 +146,15 @@ class PNGHandler extends BitmapHandler {
 		global $wgLang;
 		$original = parent::getLongDesc( $image );
 
-		wfSuppressWarnings();
+		Wikimedia\suppressWarnings();
 		$metadata = unserialize( $image->getMetadata() );
-		wfRestoreWarnings();
+		Wikimedia\restoreWarnings();
 
 		if ( !$metadata || $metadata['frameCount'] <= 0 ) {
 			return $original;
 		}
 
-		$info = array();
+		$info = [];
 		$info[] = $original;
 
 		if ( $metadata['loopCount'] == 0 ) {
@@ -174,7 +174,30 @@ class PNGHandler extends BitmapHandler {
 		return $wgLang->commaList( $info );
 	}
 
+	/**
+	 * Return the duration of an APNG file.
+	 *
+	 * Shown in the &query=imageinfo&iiprop=size api query.
+	 *
+	 * @param File $file
+	 * @return float The duration of the file.
+	 */
+	public function getLength( $file ) {
+		$serMeta = $file->getMetadata();
+		Wikimedia\suppressWarnings();
+		$metadata = unserialize( $serMeta );
+		Wikimedia\restoreWarnings();
+
+		if ( !$metadata || !isset( $metadata['duration'] ) || !$metadata['duration'] ) {
+			return 0.0;
+		} else {
+			return (float)$metadata['duration'];
+		}
+	}
+
+	// PNGs should be easy to support, but it will need some sharpening applied
+	// and another user test to check if the perceived quality change is noticeable
 	public function supportsBucketing() {
-		return true;
+		return false;
 	}
 }

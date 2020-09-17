@@ -22,10 +22,8 @@
  * @ingroup Maintenance ExternalStorage
  */
 
-define( 'REPORTING_INTERVAL', 100 );
-
 if ( !defined( 'MEDIAWIKI' ) ) {
-	$optionsWithArgs = array( 'm' );
+	$optionsWithArgs = [ 'm' ];
 
 	require_once __DIR__ . '/../commandLine.inc';
 
@@ -39,8 +37,8 @@ if ( !defined( 'MEDIAWIKI' ) ) {
 function resolveStubs() {
 	$fname = 'resolveStubs';
 
-	$dbr = wfGetDB( DB_SLAVE );
-	$maxID = $dbr->selectField( 'text', 'MAX(old_id)', false, $fname );
+	$dbr = wfGetDB( DB_REPLICA );
+	$maxID = $dbr->selectField( 'text', 'MAX(old_id)', '', $fname );
 	$blockSize = 10000;
 	$numBlocks = intval( $maxID / $blockSize ) + 1;
 
@@ -51,7 +49,7 @@ function resolveStubs() {
 		$start = intval( $maxID / $numBlocks ) * $b + 1;
 		$end = intval( $maxID / $numBlocks ) * ( $b + 1 );
 
-		$res = $dbr->select( 'text', array( 'old_id', 'old_text', 'old_flags' ),
+		$res = $dbr->select( 'text', [ 'old_id', 'old_text', 'old_flags' ],
 			"old_id>=$start AND old_id<=$end " .
 			"AND old_flags LIKE '%object%' AND old_flags NOT LIKE '%external%' " .
 			'AND LOWER(CONVERT(LEFT(old_text,22) USING latin1)) = \'o:15:"historyblobstub"\'',
@@ -75,7 +73,7 @@ function resolveStub( $id, $stubText, $flags ) {
 	$stub = unserialize( $stubText );
 	$flags = explode( ',', $flags );
 
-	$dbr = wfGetDB( DB_SLAVE );
+	$dbr = wfGetDB( DB_REPLICA );
 	$dbw = wfGetDB( DB_MASTER );
 
 	if ( strtolower( get_class( $stub ) ) !== 'historyblobstub' ) {
@@ -87,11 +85,11 @@ function resolveStub( $id, $stubText, $flags ) {
 	# Get the (maybe) external row
 	$externalRow = $dbr->selectRow(
 		'text',
-		array( 'old_text' ),
-		array(
+		[ 'old_text' ],
+		[
 			'old_id' => $stub->mOldId,
 			'old_flags' . $dbr->buildLike( $dbr->anyString(), 'external', $dbr->anyString() )
-		),
+		],
 		$fname
 	);
 
@@ -110,12 +108,12 @@ function resolveStub( $id, $stubText, $flags ) {
 	# Update the row
 	# print "oldid=$id\n";
 	$dbw->update( 'text',
-		array( /* SET */
+		[ /* SET */
 			'old_flags' => $newFlags,
 			'old_text' => $externalRow->old_text . '/' . $stub->mHash
-		),
-		array( /* WHERE */
+		],
+		[ /* WHERE */
 			'old_id' => $id
-		), $fname
+		], $fname
 	);
 }

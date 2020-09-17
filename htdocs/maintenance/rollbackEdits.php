@@ -33,8 +33,8 @@ require_once __DIR__ . '/Maintenance.php';
 class RollbackEdits extends Maintenance {
 	public function __construct() {
 		parent::__construct();
-		$this->mDescription =
-			"Rollback all edits by a given user or IP provided they're the most recent edit";
+		$this->addDescription(
+			"Rollback all edits by a given user or IP provided they're the most recent edit" );
 		$this->addOption(
 			'titles',
 			'A list of titles, none means all titles where the given user is the most recent',
@@ -50,13 +50,13 @@ class RollbackEdits extends Maintenance {
 		$user = $this->getOption( 'user' );
 		$username = User::isIP( $user ) ? $user : User::getCanonicalName( $user );
 		if ( !$username ) {
-			$this->error( 'Invalid username', true );
+			$this->fatalError( 'Invalid username' );
 		}
 
 		$bot = $this->hasOption( 'bot' );
 		$summary = $this->getOption( 'summary', $this->mSelf . ' mass rollback' );
-		$titles = array();
-		$results = array();
+		$titles = [];
+		$results = [];
 		if ( $this->hasOption( 'titles' ) ) {
 			foreach ( explode( '|', $this->getOption( 'titles' ) ) as $title ) {
 				$t = Title::newFromText( $title );
@@ -76,7 +76,7 @@ class RollbackEdits extends Maintenance {
 			return;
 		}
 
-		$doer = User::newFromName( 'Maintenance script' );
+		$doer = User::newSystemUser( 'Maintenance script', [ 'steal' => true ] );
 
 		foreach ( $titles as $t ) {
 			$page = WikiPage::factory( $t );
@@ -91,25 +91,31 @@ class RollbackEdits extends Maintenance {
 
 	/**
 	 * Get all pages that should be rolled back for a given user
-	 * @param string $user A name to check against rev_user_text
+	 * @param string $user A name to check against
 	 * @return array
 	 */
 	private function getRollbackTitles( $user ) {
-		$dbr = wfGetDB( DB_SLAVE );
-		$titles = array();
-		$results = $dbr->select(
-			array( 'page', 'revision' ),
-			array( 'page_namespace', 'page_title' ),
-			array( 'page_latest = rev_id', 'rev_user_text' => $user ),
-			__METHOD__
-		);
-		foreach ( $results as $row ) {
-			$titles[] = Title::makeTitle( $row->page_namespace, $row->page_title );
+		$dbr = $this->getDB( DB_REPLICA );
+		$titles = [];
+		$actorQuery = ActorMigration::newMigration()
+			->getWhere( $dbr, 'rev_user', User::newFromName( $user, false ) );
+		foreach ( $actorQuery['orconds'] as $cond ) {
+			$results = $dbr->select(
+				[ 'page', 'revision' ] + $actorQuery['tables'],
+				[ 'page_namespace', 'page_title' ],
+				[ $cond ],
+				__METHOD__,
+				[],
+				[ 'revision' => [ 'JOIN', 'page_latest = rev_id' ] ] + $actorQuery['joins']
+			);
+			foreach ( $results as $row ) {
+				$titles[] = Title::makeTitle( $row->page_namespace, $row->page_title );
+			}
 		}
 
 		return $titles;
 	}
 }
 
-$maintClass = 'RollbackEdits';
+$maintClass = RollbackEdits::class;
 require_once RUN_MAINTENANCE_IF_MAIN;
