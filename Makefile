@@ -191,6 +191,7 @@ deb-buster:
 	--depends "php-cgi"   \
 	--depends "php-cli"   \
 	--depends "php-fpm"   \
+	--depends "php-mbstring"   \
 	--depends "php-mysql"   \
 	--depends "tidy"   \
 	--chdir /opt/encyc-mw/   \
