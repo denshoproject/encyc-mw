@@ -166,7 +166,7 @@ wfLoadExtension( 'SpamBlacklist' );
 wfLoadExtension( 'SyntaxHighlight_GeSHi' );
 wfLoadExtension( 'TitleBlacklist' );
 wfLoadExtension( 'Variables' );
-wfLoadExtension( 'VisualEditor' );
+#wfLoadExtension( 'VisualEditor' );
 wfLoadExtension( 'WikiEditor' );
 
 
