@@ -151,7 +151,7 @@ wfLoadExtension( 'TitleBlacklist' );
 wfLoadExtension( 'WikiEditor' );
 
 # Extensions not included in the defaut MediaWiki:
-require_once "$IP/extensions/Loops/Loops.php";
+wfLoadExtension( 'Loops' );
 wfLoadExtension( 'PageInCat' );
 wfLoadExtension( 'Variables' );
 
