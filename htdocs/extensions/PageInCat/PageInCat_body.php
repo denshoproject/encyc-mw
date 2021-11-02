@@ -20,6 +20,9 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+
+use MediaWiki\MediaWikiServices;
+
 class PageInCat {
 
 	/**
@@ -28,11 +31,12 @@ class PageInCat {
 	 * method. Each key is an md5sum of page text, and each key
 	 * is an array of categories
 	 */
-	public static $categoriesForPreview = array();
+	public static $categoriesForPreview = [];
 
 	/**
 	 * Register the parser hook.
-	 * @param $parser Parser
+	 * @param Parser $parser
+	 * @return true
 	 */
 	public static function register( Parser $parser ) {
 		$parser->setFunctionHook( 'pageincat', 'PageInCat::render', Parser::SFH_OBJECT_ARGS );
@@ -42,11 +46,16 @@ class PageInCat {
 	/**
 	 * Check if in category.
 	 * Based on #if from ParserFunctions extension.
+	 * @param Parser $parser
+	 * @param PPFrame $frame
+	 * @param array $args
+	 * @return string
 	 */
 	public static function render( $parser, $frame, $args ) {
 		$catText = isset( $args[0] ) ? trim( $frame->expand( $args[0] ) ) : '';
 
 		// Must specify that content varies with what gets inserted in db on save.
+		// FIXME May or may not work after 1846e2dc15e957c55
 		$parser->getOutput()->setFlag( 'vary-revision' );
 
 		if ( self::inCat( $parser->getTitle(), $catText, $parser ) ) {
@@ -58,10 +67,10 @@ class PageInCat {
 
 	/**
 	 * Check if $page belongs to $category
-	 * @param $page Title current page
-	 * @param $category String category to check (not a title object!)
-	 * @param $parser Parser
-	 * @return boolean If $page is a member of $category
+	 * @param Title $page current page
+	 * @param string $category category to check (not a title object!)
+	 * @param Parser $parser
+	 * @return bool If $page is a member of $category
 	 */
 	private static function inCat( Title $page, $category, Parser $parser ) {
 		if ( $category === '' ) {
@@ -77,7 +86,7 @@ class PageInCat {
 		$catDBkey = $catTitle->getDBkey();
 
 		if ( !isset( $parser->pageInCat_cache ) ) {
-			$parser->pageInCat_cache = array();
+			$parser->pageInCat_cache = [];
 		} else {
 			if ( isset( $parser->pageInCat_cache[$catDBkey] ) ) {
 				# been there done that, return cached value
@@ -118,21 +127,21 @@ class PageInCat {
 
 	/**
 	 * Actually check it in DB.
-	 * @param $pageId int page_id of current page (Already verified to not be 0)
-	 * @param $catDBkey String the db key of category we're checking.
-	 * @return boolean if the current page belongs to the category.
+	 * @param int $pageId page_id of current page (Already verified to not be 0)
+	 * @param string $catDBkey the db key of category we're checking.
+	 * @return bool if the current page belongs to the category.
 	 */
 	private static function inCatCheckDb( $pageId, $catDBkey ) {
-		$dbr = wfGetDB( DB_SLAVE );
+		$dbr = wfGetDB( DB_REPLICA );
 		// This will be false if page not in cat
 		// Since 0 rows returned in that case.
 		$res = $dbr->selectField(
 			'categorylinks',
 			'cl_from',
-			array(
+			[
 				'cl_to' => $catDBkey,
 				'cl_from' => $pageId,
-			),
+			],
 			__METHOD__
 		);
 		return $res !== false;
@@ -149,10 +158,11 @@ class PageInCat {
 	 * for MW to parse something, save the result, then parse the same thing
 	 * again in same run (doesn't happen currently, but doesn't seem unimaginable
 	 * that it could).
-	 * @param $parser Parser
+	 * @param Parser $parser
+	 * @return true
 	 */
 	public static function onClearState( Parser $parser ) {
-		$parser->pageInCat_cache = array();
+		$parser->pageInCat_cache = [];
 		$parser->pageInCat_onlyCache = false;
 		return true;
 	}
@@ -164,24 +174,23 @@ class PageInCat {
 	 * and display a warning if they don't. Using ParserAfterTidy since it
 	 * runs so late in parse process.
 	 *
-	 * @param $parser Parser
-	 * @param $text String the resultant html (unused)
-	 * @return boolean true
+	 * @param Parser $parser
+	 * @param string $text the resultant html (unused)
+	 * @return bool true
 	 */
 	public static function onParserAfterTidy( Parser $parser, $text ) {
 		global $wgLang;
 		if (
 			!isset( $parser->pageInCat_cache ) ||
 			!$parser->getOptions()->getIsPreview()
-		)
-		{
+		) {
 			# page in cat extension not even used
 			# or this is not a preview.
 			return true;
 		}
 
 		$actualCategories = $parser->getOutput()->getCategories();
-		$wrongCategories = array();
+		$wrongCategories = [];
 
 		foreach ( $parser->pageInCat_cache as $catName => $catIncluded ) {
 			# A little hacky, but I want the cat names italicized.
@@ -243,9 +252,9 @@ class PageInCat {
 	 *
 	 * @todo Find a non-ugly way of doing this (is that possible?)
 	 *
-	 * @param $editPage EditPage
-	 * @param $content Content wikitext to be parsed
-	 * @return boolean true
+	 * @param EditPage $editPage
+	 * @param Content $content wikitext to be parsed
+	 * @return bool true
 	 */
 	public static function onEditPageGetPreviewContent( EditPage $editPage, $content ) {
 		global $wgPageInCatUseAccuratePreview;
@@ -253,25 +262,23 @@ class PageInCat {
 			return true; // disable this hacky mess ;)
 		}
 
-		global $wgParser; // we are not parsing anything yet, so should be safe.
+		$parser = MediaWikiServices::getInstance()->getParser(); // we are not parsing anything yet, so should be safe.
 		$curUser = RequestContext::getMain()->getUser(); // aka $wgUser in disguise
 
 		# This is copied from EditPage.php
 		# Most of these options don't matter, but thought I'd make it as close to
 		# EditPage.php as possible
-		$parserOptions = ParserOptions::newFromUser( $curUser );
-		$parserOptions->setEditSection( false );
-		$parserOptions->setTidy( true );
+		$parserOptions = $editPage->getArticle()->getPage()->makeParserOptions( $editPage->getContext() );
 		# Don't set as preview so other hook isn't triggered (Talk about being hacky!)
 		# $parserOptions->setIsPreview( true );
 		# $parserOptions->setIsSectionPreview( !is_null($editPage->section) && $editPage->section !== '' );
 		$parserOptions->enableLimitReport();
 
 		// I suppose I should be using $editPage->getTitle() but that's new in 1.19
-		$toparse = $wgParser->preSaveTransform(
-			ContentHandler::getContentText( $content ), $editPage->mTitle, $curUser, $parserOptions );
+		$toparse = $parser->preSaveTransform(
+			ContentHandler::getContentText( $content ), $editPage->getTitle(), $curUser, $parserOptions );
 		$hash = md5( $toparse, true );
-		$parserOutput = $wgParser->parse( $toparse, $editPage->mTitle, $parserOptions );
+		$parserOutput = $parser->parse( $toparse, $editPage->mTitle, $parserOptions );
 
 		if ( count( self::$categoriesForPreview ) > 10 ) {
 			# Really this should never have more than 1 element
@@ -279,7 +286,7 @@ class PageInCat {
 			# and delete the sole element. But good to be paranoid,
 			# especially given how fragile this solution is.
 			wfDebug( __METHOD__ . ' self::$categoriesForPreview grew too big.' );
-			self::$categoriesForPreview = array();
+			self::$categoriesForPreview = [];
 		}
 		self::$categoriesForPreview[$hash] = $parserOutput->getCategoryLinks();
 		return true;
@@ -291,11 +298,11 @@ class PageInCat {
 	 * See onEditPageGetPreviewContent. This is rather fragile/scary.
 	 * If anyone has a suggestion for how to do this better, please let me know.
 	 *
-	 * @param $parser Parser
-	 * @param $pstText String text to parse, all pst'd. In theory untouched but
+	 * @param Parser $parser
+	 * @param string $pstText text to parse, all pst'd. In theory untouched but
 	 *    various hooks could have touched it, which would make this all fail.
-	 * @param $stripState StripState $parser->mStripState - I really don't need this
-	 * @return boolean true
+	 * @param StripState $stripState $parser->mStripState - I really don't need this
+	 * @return bool true
 	 */
 	public static function onParserBeforeInternalParse( Parser $parser, $pstText, $stripState ) {
 		global $wgPageInCatUseAccuratePreview;
@@ -318,11 +325,11 @@ class PageInCat {
 		}
 
 		if ( !isset( $parser->pageInCat_cache ) ) {
-			$parser->pageInCat_cache = array();
+			$parser->pageInCat_cache = [];
 		} elseif ( count( $parser->pageInCat_cache ) !== 0 ) {
 			# being paranoid
 			wfDebug( __METHOD__ . ' $parser->pageInCat_cache not empty!' );
-			$parser->pageInCat_cache = array();
+			$parser->pageInCat_cache = [];
 		}
 
 		foreach ( self::$categoriesForPreview[$hash] as $catName ) {
