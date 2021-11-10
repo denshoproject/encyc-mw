@@ -75,8 +75,8 @@ $wgDBmysql5 = false;
 #$wgSharedTables[] = "actor";
 
 ## Shared memory settings
-$wgMainCacheType = CACHE_MEMCACHED;
-$wgMemCachedServers = [ '127.0.0.1:11211' ];
+$wgMainCacheType = CACHE_NONE;
+$wgMemCachedServers = [];
 
 ## To enable image uploads, make sure the 'images' directory
 ## is writable, then set this to true:
