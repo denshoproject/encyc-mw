@@ -49,7 +49,7 @@ help:
 	@echo "TODO encyc-mw install help"
 
 
-install: install-prep install-app install-static install-configs
+install: install-app install-configs
 
 test: test-app
 
