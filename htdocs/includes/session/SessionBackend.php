@@ -24,9 +24,12 @@
 namespace MediaWiki\Session;
 
 use CachedBagOStuff;
+use MediaWiki\HookContainer\HookContainer;
+use MediaWiki\HookContainer\HookRunner;
 use Psr\Log\LoggerInterface;
 use User;
 use WebRequest;
+use Wikimedia\AtEase\AtEase;
 
 /**
  * This is the actual workhorse for Session.
@@ -50,15 +53,25 @@ final class SessionBackend {
 	/** @var SessionId */
 	private $id;
 
+	/** @var bool */
 	private $persist = false;
+
+	/** @var bool */
 	private $remember = false;
+
+	/** @var bool */
 	private $forceHTTPS = false;
 
 	/** @var array|null */
 	private $data = null;
 
+	/** @var bool */
 	private $forcePersist = false;
+
+	/** @var bool */
 	private $metaDirty = false;
+
+	/** @var bool */
 	private $dataDirty = false;
 
 	/** @var string Used to detect subarray modifications */
@@ -70,12 +83,16 @@ final class SessionBackend {
 	/** @var LoggerInterface */
 	private $logger;
 
+	/** @var HookRunner */
+	private $hookRunner;
+
 	/** @var int */
 	private $lifetime;
 
 	/** @var User */
 	private $user;
 
+	/** @var int */
 	private $curIndex = 0;
 
 	/** @var WebRequest[] Session requests */
@@ -87,13 +104,21 @@ final class SessionBackend {
 	/** @var array|null provider-specified metadata */
 	private $providerMetadata = null;
 
+	/** @var int */
 	private $expires = 0;
+
+	/** @var int */
 	private $loggedOut = 0;
+
+	/** @var int */
 	private $delaySave = 0;
 
+	/** @var bool */
 	private $usePhpSessionHandling = true;
+	/** @var bool */
 	private $checkPHPSessionRecursionGuard = false;
 
+	/** @var bool */
 	private $shutdown = false;
 
 	/**
@@ -101,10 +126,12 @@ final class SessionBackend {
 	 * @param SessionInfo $info Session info to populate from
 	 * @param CachedBagOStuff $store Backend data store
 	 * @param LoggerInterface $logger
+	 * @param HookContainer $hookContainer
 	 * @param int $lifetime Session data lifetime in seconds
 	 */
 	public function __construct(
-		SessionId $id, SessionInfo $info, CachedBagOStuff $store, LoggerInterface $logger, $lifetime
+		SessionId $id, SessionInfo $info, CachedBagOStuff $store, LoggerInterface $logger,
+		HookContainer $hookContainer, $lifetime
 	) {
 		$phpSessionHandling = \RequestContext::getMain()->getConfig()->get( 'PHPSessionHandling' );
 		$this->usePhpSessionHandling = $phpSessionHandling !== 'disable';
@@ -125,6 +152,7 @@ final class SessionBackend {
 		$this->user = $info->getUserInfo() ? $info->getUserInfo()->getUser() : new User;
 		$this->store = $store;
 		$this->logger = $logger;
+		$this->hookRunner = new HookRunner( $hookContainer );
 		$this->lifetime = $lifetime;
 		$this->provider = $info->getProvider();
 		$this->persist = $info->wasPersisted();
@@ -143,7 +171,7 @@ final class SessionBackend {
 			$this->logger->debug(
 				'SessionBackend "{session}" is unsaved, marking dirty in constructor',
 				[
-					'session' => $this->id,
+					'session' => $this->id->__toString(),
 			] );
 		} else {
 			$this->data = $blob['data'];
@@ -157,7 +185,7 @@ final class SessionBackend {
 				$this->logger->debug(
 					'SessionBackend "{session}" metadata dirty due to missing expiration timestamp',
 				[
-					'session' => $this->id,
+					'session' => $this->id->__toString(),
 				] );
 			}
 		}
@@ -178,7 +206,7 @@ final class SessionBackend {
 
 	/**
 	 * Deregister a Session
-	 * @private For use by \MediaWiki\Session\Session::__destruct() only
+	 * @internal For use by \MediaWiki\Session\Session::__destruct() only
 	 * @param int $index
 	 */
 	public function deregisterSession( $index ) {
@@ -191,7 +219,7 @@ final class SessionBackend {
 
 	/**
 	 * Shut down a session
-	 * @private For use by \MediaWiki\Session\SessionManager::shutdown() only
+	 * @internal For use by \MediaWiki\Session\SessionManager::shutdown() only
 	 */
 	public function shutdown() {
 		$this->save( true );
@@ -208,7 +236,7 @@ final class SessionBackend {
 
 	/**
 	 * Fetch the SessionId object
-	 * @private For internal use by WebRequest
+	 * @internal For internal use by WebRequest
 	 * @return SessionId
 	 */
 	public function getSessionId() {
@@ -237,13 +265,13 @@ final class SessionBackend {
 			$this->logger->debug(
 				'SessionBackend "{session}" metadata dirty due to ID reset (formerly "{oldId}")',
 				[
-					'session' => $this->id,
+					'session' => $this->id->__toString(),
 					'oldId' => $oldId,
 			] );
 
 			if ( $restart ) {
 				session_id( (string)$this->id );
-				\Wikimedia\quietCall( 'session_start' );
+				AtEase::quietCall( 'session_start' );
 			}
 
 			$this->autosave();
@@ -251,6 +279,8 @@ final class SessionBackend {
 			// Delete the data for the old session ID now
 			$this->store->delete( $this->store->makeKey( 'MWSession', $oldId ) );
 		}
+
+		return $this->id;
 	}
 
 	/**
@@ -286,7 +316,7 @@ final class SessionBackend {
 			$this->logger->debug(
 				'SessionBackend "{session}" force-persist due to persist()',
 				[
-					'session' => $this->id,
+					'session' => $this->id->__toString(),
 			] );
 			$this->autosave();
 		} else {
@@ -305,7 +335,7 @@ final class SessionBackend {
 			) {
 				$this->logger->debug(
 					'SessionBackend "{session}" Closing PHP session for unpersist',
-					[ 'session' => $this->id ]
+					[ 'session' => $this->id->__toString() ]
 				);
 				session_write_close();
 				session_id( '' );
@@ -344,7 +374,7 @@ final class SessionBackend {
 			$this->logger->debug(
 				'SessionBackend "{session}" metadata dirty due to remember-user change',
 				[
-					'session' => $this->id,
+					'session' => $this->id->__toString(),
 			] );
 			$this->autosave();
 		}
@@ -405,7 +435,7 @@ final class SessionBackend {
 		$this->logger->debug(
 			'SessionBackend "{session}" metadata dirty due to user change',
 			[
-				'session' => $this->id,
+				'session' => $this->id->__toString(),
 		] );
 		$this->autosave();
 	}
@@ -441,7 +471,7 @@ final class SessionBackend {
 			$this->logger->debug(
 				'SessionBackend "{session}" metadata dirty due to force-HTTPS change',
 				[
-					'session' => $this->id,
+					'session' => $this->id->__toString(),
 			] );
 			$this->autosave();
 		}
@@ -457,7 +487,7 @@ final class SessionBackend {
 
 	/**
 	 * Set the "logged out" timestamp
-	 * @param int $ts
+	 * @param int|null $ts
 	 */
 	public function setLoggedOutTimestamp( $ts = null ) {
 		$ts = (int)$ts;
@@ -467,7 +497,7 @@ final class SessionBackend {
 			$this->logger->debug(
 				'SessionBackend "{session}" metadata dirty due to logged-out-timestamp change',
 				[
-					'session' => $this->id,
+					'session' => $this->id->__toString(),
 			] );
 			$this->autosave();
 		}
@@ -475,7 +505,7 @@ final class SessionBackend {
 
 	/**
 	 * Fetch provider metadata
-	 * @protected For use by SessionProvider subclasses only
+	 * @note For use by SessionProvider subclasses only
 	 * @return array|null
 	 */
 	public function getProviderMetadata() {
@@ -484,7 +514,7 @@ final class SessionBackend {
 
 	/**
 	 * Set provider metadata
-	 * @protected For use by SessionProvider subclasses only
+	 * @note For use by SessionProvider subclasses only
 	 * @param array|null $metadata
 	 */
 	public function setProviderMetadata( $metadata ) {
@@ -497,7 +527,7 @@ final class SessionBackend {
 			$this->logger->debug(
 				'SessionBackend "{session}" metadata dirty due to provider metadata change',
 				[
-					'session' => $this->id,
+					'session' => $this->id->__toString(),
 			] );
 			$this->autosave();
 		}
@@ -509,7 +539,7 @@ final class SessionBackend {
 	 * Note the caller is responsible for calling $this->dirty() if anything in
 	 * the array is changed.
 	 *
-	 * @private For use by \MediaWiki\Session\Session only.
+	 * @internal For use by \MediaWiki\Session\Session only.
 	 * @return array
 	 */
 	public function &getData() {
@@ -532,7 +562,7 @@ final class SessionBackend {
 				$this->logger->debug(
 					'SessionBackend "{session}" data dirty due to addData(): {callers}',
 					[
-						'session' => $this->id,
+						'session' => $this->id->__toString(),
 						'callers' => wfGetAllCallers( 5 ),
 				] );
 			}
@@ -541,14 +571,14 @@ final class SessionBackend {
 
 	/**
 	 * Mark data as dirty
-	 * @private For use by \MediaWiki\Session\Session only.
+	 * @internal For use by \MediaWiki\Session\Session only.
 	 */
 	public function dirty() {
 		$this->dataDirty = true;
 		$this->logger->debug(
 			'SessionBackend "{session}" data dirty due to dirty(): {callers}',
 			[
-				'session' => $this->id,
+				'session' => $this->id->__toString(),
 				'callers' => wfGetAllCallers( 5 ),
 		] );
 	}
@@ -565,7 +595,7 @@ final class SessionBackend {
 			$this->logger->debug(
 				'SessionBackend "{callers}" metadata dirty for renew(): {callers}',
 				[
-					'session' => $this->id,
+					'session' => $this->id->__toString(),
 					'callers' => wfGetAllCallers( 5 ),
 			] );
 			if ( $this->persist ) {
@@ -573,7 +603,7 @@ final class SessionBackend {
 				$this->logger->debug(
 					'SessionBackend "{session}" force-persist for renew(): {callers}',
 					[
-						'session' => $this->id,
+						'session' => $this->id->__toString(),
 						'callers' => wfGetAllCallers( 5 ),
 				] );
 			}
@@ -612,7 +642,7 @@ final class SessionBackend {
 	 * Save the session
 	 *
 	 * Update both the backend data and the associated WebRequest(s) to
-	 * reflect the state of the the SessionBackend. This might include
+	 * reflect the state of the SessionBackend. This might include
 	 * persisting or unpersisting the session.
 	 *
 	 * @param bool $closing Whether the session is being closed
@@ -625,8 +655,8 @@ final class SessionBackend {
 				'SessionBackend "{session}" not saving, user {user} was ' .
 				'passed to SessionManager::preventSessionsForUser',
 				[
-					'session' => $this->id,
-					'user' => $this->user,
+					'session' => $this->id->__toString(),
+					'user' => $this->user->__toString(),
 			] );
 			return;
 		}
@@ -637,8 +667,8 @@ final class SessionBackend {
 			$this->logger->debug(
 				'SessionBackend "{session}" creating token for user {user} on save',
 				[
-					'session' => $this->id,
-					'user' => $this->user,
+					'session' => $this->id->__toString(),
+					'user' => $this->user->__toString(),
 			] );
 			$this->user->setToken();
 			if ( !wfReadOnly() ) {
@@ -658,7 +688,7 @@ final class SessionBackend {
 			$this->logger->debug(
 				'SessionBackend "{session}" data dirty due to hash mismatch, {expected} !== {got}',
 				[
-					'session' => $this->id,
+					'session' => $this->id->__toString(),
 					'expected' => $this->dataHash,
 					'got' => md5( serialize( $this->data ) ),
 			] );
@@ -673,7 +703,7 @@ final class SessionBackend {
 			'SessionBackend "{session}" save: dataDirty={dataDirty} ' .
 			'metaDirty={metaDirty} forcePersist={forcePersist}',
 			[
-				'session' => $this->id,
+				'session' => $this->id->__toString(),
 				'dataDirty' => (int)$this->dataDirty,
 				'metaDirty' => (int)$this->metaDirty,
 				'forcePersist' => (int)$this->forcePersist,
@@ -718,7 +748,7 @@ final class SessionBackend {
 			'persisted' => $this->persist,
 		];
 
-		\Hooks::run( 'SessionMetadata', [ $this, &$metadata, $this->requests ] );
+		$this->hookRunner->onSessionMetadata( $this, $metadata, $this->requests );
 
 		foreach ( $origMetadata as $k => $v ) {
 			if ( $metadata[$k] !== $v ) {
@@ -761,10 +791,10 @@ final class SessionBackend {
 				$this->logger->debug(
 					'SessionBackend "{session}" Taking over PHP session',
 					[
-						'session' => $this->id,
+						'session' => $this->id->__toString(),
 				] );
 				session_id( (string)$this->id );
-				\Wikimedia\quietCall( 'session_start' );
+				AtEase::quietCall( 'session_start' );
 			}
 		}
 	}

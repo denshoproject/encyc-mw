@@ -7,6 +7,10 @@
  * @since 1.27
  */
 class ComposerInstalled {
+	/**
+	 * @var array[]
+	 */
+	private $contents;
 
 	/**
 	 * @param string $location
@@ -18,17 +22,20 @@ class ComposerInstalled {
 	/**
 	 * Dependencies currently installed according to installed.json
 	 *
-	 * @return array
+	 * @return array[]
 	 */
 	public function getInstalledDependencies() {
+		// Composer version 2 provides the list of installed packages under the 'packages' key.
+		$contents = $this->contents['packages'] ?? $this->contents;
+
 		$deps = [];
-		foreach ( $this->contents as $installed ) {
+		foreach ( $contents as $installed ) {
 			$deps[$installed['name']] = [
 				'version' => ComposerJson::normalizeVersion( $installed['version'] ),
 				'type' => $installed['type'],
-				'licenses' => isset( $installed['license'] ) ? $installed['license'] : [],
-				'authors' => isset( $installed['authors'] ) ? $installed['authors'] : [],
-				'description' => isset( $installed['description'] ) ? $installed['description'] : '',
+				'licenses' => $installed['license'] ?? [],
+				'authors' => $installed['authors'] ?? [],
+				'description' => $installed['description'] ?? '',
 			];
 		}
 

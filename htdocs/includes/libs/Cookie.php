@@ -33,7 +33,7 @@ class Cookie {
 	// TO IMPLEMENT? protected $version
 	// TO IMPLEMENT? protected $comment
 
-	function __construct( $name, $value, $attr ) {
+	public function __construct( $name, $value, $attr ) {
 		$this->name = $name;
 		$this->set( $value, $attr );
 	}
@@ -58,11 +58,7 @@ class Cookie {
 			$this->expires = strtotime( $attr['expires'] );
 		}
 
-		if ( isset( $attr['path'] ) ) {
-			$this->path = $attr['path'];
-		} else {
-			$this->path = '/';
-		}
+		$this->path = $attr['path'] ?? '/';
 
 		if ( isset( $attr['domain'] ) ) {
 			if ( self::validateCookieDomain( $attr['domain'] ) ) {
@@ -86,7 +82,7 @@ class Cookie {
 	 * not a big problem in practice, but there are test cases)
 	 *
 	 * @param string $domain The domain to validate
-	 * @param string $originDomain (optional) the domain the cookie originates from
+	 * @param string|null $originDomain (optional) the domain the cookie originates from
 	 * @return bool
 	 */
 	public static function validateCookieDomain( $domain, $originDomain = null ) {
@@ -119,7 +115,7 @@ class Cookie {
 		// Don't allow cookies for "co.uk" or "gov.uk", etc, but allow "supermarket.uk"
 		if ( strrpos( $domain, "." ) - strlen( $domain ) == -3 ) {
 			if ( ( count( $dc ) == 2 && strlen( $dc[0] ) <= 2 )
-				|| ( count( $dc ) == 3 && strlen( $dc[0] ) == "" && strlen( $dc[1] ) <= 2 ) ) {
+				|| ( count( $dc ) == 3 && strlen( $dc[0] ) == 0 && strlen( $dc[1] ) <= 2 ) ) {
 				return false;
 			}
 			if ( ( count( $dc ) == 2 || ( count( $dc ) == 3 && $dc[0] == '' ) )
