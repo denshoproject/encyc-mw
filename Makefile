@@ -19,7 +19,7 @@ INSTALLDIR=$(INSTALL_BASE)/encyc-mw
 IMAGES_DIR=$(INSTALLDIR)/htdocs/images
 
 CONF_BASE=/etc/encyc
-CONF_PRODUCTION=$(CONF_BASE)/LocalSettings.php-1.24
+CONF_PRODUCTION=$(CONF_BASE)/LocalSettings.php
 
 NGINX_CONF=/etc/nginx/sites-available/encycmw.conf
 NGINX_CONF_LINK=/etc/nginx/sites-enabled/encycmw.conf
@@ -101,9 +101,9 @@ install-configs:
 	@echo ""
 	@echo "installing configs ----------------------------------------------------"
 # web app settings
-	ln -s $(INSTALLDIR)/conf/LocalSettings.php-1.24 /opt/encyc-mw/htdocs/LocalSettings.php
-# 	chown root.encyc /opt/encyc-mw/htdocs/LocalSettings.php-1.24
-# 	chmod 640 /opt/encyc-mw/htdocs/LocalSettings.php-1.24
+	ln -s $(INSTALLDIR)/conf/LocalSettings.php /opt/encyc-mw/htdocs/LocalSettings.php
+# 	chown root.encyc /opt/encyc-mw/htdocs/LocalSettings.php
+# 	chmod 640 /opt/encyc-mw/htdocs/LocalSettings.php
 
 install-daemon-configs:
 	@echo ""
