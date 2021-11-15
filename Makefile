@@ -101,7 +101,8 @@ install-configs:
 	@echo ""
 	@echo "installing configs ----------------------------------------------------"
 # web app settings
-	ln -s $(INSTALLDIR)/conf/LocalSettings.php /opt/encyc-mw/htdocs/LocalSettings.php
+	-mkdir $(CONF_BASE)
+	ln -s $(CONF_PRODUCTION) /opt/encyc-mw/htdocs/LocalSettings.php
 # 	chown root.encyc /opt/encyc-mw/htdocs/LocalSettings.php
 # 	chmod 640 /opt/encyc-mw/htdocs/LocalSettings.php
 
