@@ -24,6 +24,11 @@ CONF_PRODUCTION=$(CONF_BASE)/LocalSettings.php-1.24
 NGINX_CONF=/etc/nginx/sites-available/encycmw.conf
 NGINX_CONF_LINK=/etc/nginx/sites-enabled/encycmw.conf
 
+TGZ_BRANCH := $(shell python3 bin/package-branch.py)
+TGZ_FILE=$(APP)_$(APP_VERSION)
+TGZ_DIR=$(INSTALLDIR)/$(TGZ_FILE)
+TGZ_MW=$(TGZ_DIR)/encyc-mw
+
 DEB_BRANCH := $(shell git rev-parse --abbrev-ref HEAD | tr -d _ | tr -d -)
 DEB_ARCH=amd64
 DEB_NAME_JESSIE=$(APP)-$(DEB_BRANCH)
@@ -117,6 +122,21 @@ install-daemon-configs:
 uninstall-daemon-configs:
 	-rm /etc/nginx/sites-available/encycmw.conf
 	-rm /etc/nginx/sites-enabled/encycmw.conf
+
+
+tgz-local:
+	rm -Rf $(TGZ_DIR)
+	git clone $(INSTALLDIR) $(TGZ_MW)
+	cd $(TGZ_MW); git checkout develop; git checkout master
+	tar czf $(TGZ_FILE).tgz $(TGZ_FILE)
+	rm -Rf $(TGZ_DIR)
+
+tgz:
+	rm -Rf $(TGZ_DIR)
+	git clone $(GIT_SOURCE_URL) $(TGZ_MW)
+	cd $(TGZ_MW); git checkout develop; git checkout master
+	tar czf $(TGZ_FILE).tgz $(TGZ_FILE)
+	rm -Rf $(TGZ_DIR)
 
 
 # http://fpm.readthedocs.io/en/latest/
