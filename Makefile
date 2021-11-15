@@ -14,6 +14,11 @@ DEBIAN_RELEASE := $(shell lsb_release -sr)
 # Sortable major version tag e.g. deb8
 DEBIAN_RELEASE_TAG = deb$(shell lsb_release -sr | cut -c1)
 
+PHP_VERSION=7.4
+ifeq ($(DEBIAN_CODENAME), buster)
+	PHP_VERSION=7.3
+endif
+
 INSTALL_BASE=/opt
 INSTALLDIR=$(INSTALL_BASE)/encyc-mw
 IMAGES_DIR=$(INSTALLDIR)/htdocs/images
@@ -113,9 +118,9 @@ install-daemon-configs:
 	@echo ""
 	@echo "installing daemon configs ---------------------------------------------"
 # php-fpm settings
-	cp $(INSTALLDIR)/conf/www.conf /etc/php/7.3/fpm/pool.d/www.conf
-	chown root.root /etc/php/7.3/fpm/pool.d/www.conf
-	chmod 644 /etc/php/7.3/fpm/pool.d/www.conf
+	cp $(INSTALLDIR)/conf/www.conf /etc/php/$(PHP_VERSION)/fpm/pool.d/www.conf
+	chown root.root /etc/php/$(PHP_VERSION)/fpm/pool.d/www.conf
+	chmod 644 /etc/php/$(PHP_VERSION)/fpm/pool.d/www.conf
 # nginx settings
 	cp $(INSTALLDIR)/conf/nginx.conf /etc/nginx/sites-available/encycmw.conf
 	chown root.root /etc/nginx/sites-available/encycmw.conf
