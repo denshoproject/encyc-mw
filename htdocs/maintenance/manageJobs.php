@@ -34,6 +34,7 @@ class ManageJobs extends Maintenance {
 		$this->addDescription( 'Perform administrative tasks on a job queue' );
 		$this->addOption( 'type', 'Job type', true, true );
 		$this->addOption( 'action', 'Queue operation ("delete", "repush-abandoned")', true, true );
+		$this->setBatchSize( 100 );
 	}
 
 	public function execute() {
@@ -60,7 +61,7 @@ class ManageJobs extends Maintenance {
 
 	private function repushAbandoned( JobQueue $queue ) {
 		$cache = ObjectCache::getInstance( CACHE_DB );
-		$key = $cache->makeGlobalKey( 'last-job-repush', $queue->getWiki(), $queue->getType() );
+		$key = $cache->makeGlobalKey( 'last-job-repush', $queue->getDomain(), $queue->getType() );
 
 		$now = wfTimestampNow();
 		$lastRepushTime = $cache->get( $key );

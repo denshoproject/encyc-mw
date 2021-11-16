@@ -20,8 +20,8 @@
 
 namespace MediaWiki\Logger\Monolog;
 
-use AvroIODatumWriter;
 use AvroIOBinaryEncoder;
+use AvroIODatumWriter;
 use AvroIOTypeException;
 use AvroSchema;
 use AvroStringIO;
@@ -37,9 +37,9 @@ use Monolog\Formatter\FormatterInterface;
  */
 class AvroFormatter implements FormatterInterface {
 	/**
-	 * @var Magic byte to encode schema revision id.
+	 * Magic byte to encode schema revision id.
 	 */
-	const MAGIC = 0x0;
+	private const MAGIC = 0x0;
 	/**
 	 * @var array Map from schema name to schema definition
 	 */
@@ -77,16 +77,16 @@ class AvroFormatter implements FormatterInterface {
 	 * schema configured for the records channel.
 	 *
 	 * @param array $record
-	 * @return string|null The serialized record, or null if
+	 * @return string The serialized record, or an empty string if
 	 *  the record is not valid for the selected schema.
 	 */
-	public function format( array $record ) {
+	public function format( array $record ): string {
 		$this->io->truncate();
 		$schema = $this->getSchema( $record['channel'] );
 		$revId = $this->getSchemaRevisionId( $record['channel'] );
 		if ( $schema === null || $revId === null ) {
 			trigger_error( "The schema for channel '{$record['channel']}' is not available" );
-			return null;
+			return '';
 		}
 		try {
 			$this->writer->write_data( $schema, $record['context'], $this->encoder );
@@ -94,7 +94,7 @@ class AvroFormatter implements FormatterInterface {
 			$errors = AvroValidator::getErrors( $schema, $record['context'] );
 			$json = json_encode( $errors );
 			trigger_error( "Avro failed to serialize record for {$record['channel']} : {$json}" );
-			return null;
+			return '';
 		}
 		return chr( self::MAGIC ) . $this->encodeLong( $revId ) . $this->io->string();
 	}
@@ -127,7 +127,10 @@ class AvroFormatter implements FormatterInterface {
 		if ( !isset( $this->schemas[$channel] ) ) {
 			return null;
 		}
-		if ( !isset( $this->schemas[$channel]['revision'], $this->schemas[$channel]['schema'] ) ) {
+		if (
+			!isset( $this->schemas[$channel]['revision'] )
+			&& !isset( $this->schemas[$channel]['schema'] )
+		) {
 			return null;
 		}
 

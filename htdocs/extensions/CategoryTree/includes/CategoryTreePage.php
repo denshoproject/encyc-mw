@@ -22,6 +22,8 @@
  * @author Daniel Kinzler, brightbyte.de
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * Special page for the CategoryTree extension, an AJAX based gadget
  * to display the category structure of a wiki
@@ -60,6 +62,7 @@ class CategoryTreePage extends SpecialPage {
 		global $wgCategoryTreeDefaultOptions, $wgCategoryTreeSpecialPageOptions;
 
 		$this->setHeaders();
+		$this->addHelpLink( 'Extension:CategoryTree' );
 		$request = $this->getRequest();
 		if ( $par ) {
 			$this->target = $par;
@@ -115,7 +118,11 @@ class CategoryTreePage extends SpecialPage {
 
 				$output->addHTML( Xml::closeElement( 'div' ) );
 
-				$output->addHTML( Xml::openElement( 'div', [ 'class' => 'CategoryTreeResult' ] ) );
+				$output->addHTML( Xml::openElement( 'div', [
+					'class' => 'CategoryTreeResult CategoryTreeTag',
+					'data-ct-mode' => $this->tree->getOption( 'mode' ),
+					'data-ct-options' => $this->tree->getOptionsAsJsStructure(),
+				] ) );
 				$output->addHTML( $this->tree->renderNode( $title, 1 ) );
 				$output->addHTML( Xml::closeElement( 'div' ) );
 			} else {
@@ -197,9 +204,11 @@ class CategoryTreePage extends SpecialPage {
 			// No prefix suggestion outside of category namespace
 			return [];
 		}
+		$searchEngine = MediaWikiServices::getInstance()->newSearchEngine();
+		$searchEngine->setLimitOffset( $limit, $offset );
 		// Autocomplete subpage the same as a normal search, but just for categories
-		$prefixSearcher = new TitlePrefixSearch;
-		$result = $prefixSearcher->search( $title->getPrefixedText(), $limit, [ NS_CATEGORY ], $offset );
+		$searchEngine->setNamespaces( [ NS_CATEGORY ] );
+		$result = $searchEngine->defaultPrefixSearch( $search );
 
 		return array_map( function ( Title $t ) {
 			// Remove namespace in search suggestion
@@ -207,6 +216,9 @@ class CategoryTreePage extends SpecialPage {
 		}, $result );
 	}
 
+	/**
+	 * @inheritDoc
+	 */
 	protected function getGroupName() {
 		return 'pages';
 	}

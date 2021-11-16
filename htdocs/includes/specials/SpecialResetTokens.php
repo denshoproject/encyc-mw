@@ -38,6 +38,10 @@ class SpecialResetTokens extends FormSpecialPage {
 		return true;
 	}
 
+	public function requiresUnblock() {
+		return false;
+	}
+
 	/**
 	 * Returns the token information list for this page after running
 	 * the hook and filtering out disabled preferences.
@@ -49,7 +53,7 @@ class SpecialResetTokens extends FormSpecialPage {
 			$tokens = [
 				[ 'preference' => 'watchlisttoken', 'label-message' => 'resettokens-watchlist-token' ],
 			];
-			Hooks::run( 'SpecialResetTokensTokens', [ &$tokens ] );
+			$this->getHookRunner()->onSpecialResetTokensTokens( $tokens );
 
 			$hiddenPrefs = $this->getConfig()->get( 'HiddenPrefs' );
 			$tokens = array_filter( $tokens, function ( $tok ) use ( $hiddenPrefs ) {
@@ -121,6 +125,7 @@ class SpecialResetTokens extends FormSpecialPage {
 	 * @param HTMLForm $form
 	 */
 	protected function alterForm( HTMLForm $form ) {
+		$form->setSubmitDestructive();
 		if ( $this->getTokensList() ) {
 			$form->setSubmitTextMsg( 'resettokens-resetbutton' );
 		} else {

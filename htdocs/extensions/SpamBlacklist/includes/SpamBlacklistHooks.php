@@ -1,10 +1,13 @@
 <?php
 
+use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\Storage\EditResult;
+use MediaWiki\User\UserIdentity;
+
 /**
  * Hooks for the spam blacklist extension
  */
 class SpamBlacklistHooks {
-
 	/**
 	 * Hook function for EditFilterMergedContent
 	 *
@@ -17,7 +20,7 @@ class SpamBlacklistHooks {
 	 *
 	 * @return bool
 	 */
-	static function filterMergedContent(
+	public static function filterMergedContent(
 		IContextSource $context,
 		Content $content,
 		Status $status,
@@ -42,15 +45,14 @@ class SpamBlacklistHooks {
 		$matches = $spamObj->filter( $links, $title );
 
 		if ( $matches !== false ) {
-			$status->fatal( 'spamprotectiontext' );
-
-			foreach ( $matches as $match ) {
-				$status->fatal( 'spamprotectionmatch', $match );
-			}
-
-			$status->apiHookResult = [
-				'spamblacklist' => implode( '|', $matches ),
-			];
+			$error = new ApiMessage(
+				wfMessage( 'spam-blacklisted-link', Message::listParam( $matches ) ),
+				'spamblacklist',
+				[
+					'spamblacklist' => [ 'matches' => $matches ],
+				]
+			);
+			$status->fatal( $error );
 		}
 
 		// Always return true, EditPage will look at $status->isOk().
@@ -96,7 +98,7 @@ class SpamBlacklistHooks {
 	 * @param string &$hookError
 	 * @return bool
 	 */
-	static function validate( EditPage $editPage, $text, $section, &$hookError ) {
+	public static function validate( EditPage $editPage, $text, $section, &$hookError ) {
 		$title = $editPage->getTitle();
 		$thisPageName = $title->getPrefixedDBkey();
 
@@ -141,41 +143,26 @@ class SpamBlacklistHooks {
 	}
 
 	/**
-	 * Hook function for PageContentSaveComplete
+	 * Hook function for PageSaveComplete
 	 * Clear local spam blacklist caches on page save.
 	 *
 	 * @param WikiPage $wikiPage
-	 * @param User $user
-	 * @param Content $content
+	 * @param UserIdentity $userIdentity
 	 * @param string $summary
-	 * @param bool $isMinor
-	 * @param bool $isWatch
-	 * @param string $section
 	 * @param int $flags
-	 * @param Revision|null $revision
-	 * @param Status $status
-	 * @param int $baseRevId
+	 * @param RevisionRecord $revisionRecord
+	 * @param EditResult $editResult
 	 *
 	 * @return bool
 	 */
-	static function pageSaveContent(
+	public static function pageSaveContent(
 		WikiPage $wikiPage,
-		User $user,
-		Content $content,
-		$summary,
-		$isMinor,
-		$isWatch,
-		$section,
-		$flags,
-		$revision,
-		Status $status,
-		$baseRevId
+		UserIdentity $userIdentity,
+		string $summary,
+		int $flags,
+		RevisionRecord $revisionRecord,
+		EditResult $editResult
 	) {
-		if ( $revision ) {
-			BaseBlacklist::getSpamBlacklist()
-				->doLogging( $user, $wikiPage->getTitle(), $revision->getId() );
-		}
-
 		if ( !BaseBlacklist::isLocalSource( $wikiPage->getTitle() ) ) {
 			return true;
 		}
@@ -192,7 +179,7 @@ class SpamBlacklistHooks {
 	/**
 	 * @param UploadBase $upload
 	 * @param User $user
-	 * @param array $props
+	 * @param array|null $props
 	 * @param string $comment
 	 * @param string $pageText
 	 * @param array|ApiMessage &$error
@@ -201,7 +188,7 @@ class SpamBlacklistHooks {
 	public static function onUploadVerifyUpload(
 		UploadBase $upload,
 		User $user,
-		array $props,
+		$props,
 		$comment,
 		$pageText,
 		&$error
@@ -210,7 +197,7 @@ class SpamBlacklistHooks {
 
 		// get the link from the not-yet-saved page content.
 		$content = ContentHandler::makeContent( $pageText, $title );
-		$parserOptions = $content->getContentHandler()->makeParserOptions( 'canonical' );
+		$parserOptions = ParserOptions::newCanonical( 'canonical' );
 		$output = $content->getParserOutput( $title, null, $parserOptions );
 		$links = array_keys( $output->getExternalLinks() );
 
@@ -228,56 +215,14 @@ class SpamBlacklistHooks {
 
 		if ( $matches !== false ) {
 			$error = new ApiMessage(
-				wfMessage( 'spamprotectiontext' ),
+				wfMessage( 'spam-blacklisted-link', Message::listParam( $matches ) ),
 				'spamblacklist',
 				[
 					'spamblacklist' => [ 'matches' => $matches ],
-					'message' => [
-						'key' => 'spamprotectionmatch',
-						'params' => $matches[0],
-					],
 				]
 			);
 		}
 
 		return true;
-	}
-
-	/**
-	 * @param WikiPage &$article
-	 * @param User &$user
-	 * @param string &$reason
-	 * @param string &$error
-	 */
-	public static function onArticleDelete( WikiPage &$article, User &$user, &$reason, &$error ) {
-		$spam = BaseBlacklist::getSpamBlacklist();
-		if ( !$spam->isLoggingEnabled() ) {
-			return;
-		}
-
-		// Log the changes, but we only commit them once the deletion has happened.
-		// We do that since the external links table could get cleared before the
-		// ArticleDeleteComplete hook runs
-		$spam->logUrlChanges( $spam->getCurrentLinks( $article->getTitle() ), [], [] );
-	}
-
-	/**
-	 * @param WikiPage &$page
-	 * @param User &$user
-	 * @param string $reason
-	 * @param int $id
-	 * @param Content|null $content
-	 * @param LogEntry $logEntry
-	 */
-	public static function onArticleDeleteComplete(
-		&$page,
-		User &$user,
-		$reason,
-		$id,
-		Content $content = null,
-		LogEntry $logEntry
-	) {
-		$spam = BaseBlacklist::getSpamBlacklist();
-		$spam->doLogging( $user, $page->getTitle(), $page->getLatest() );
 	}
 }

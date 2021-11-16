@@ -16,8 +16,10 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @ingroup Deployment
+ * @ingroup Installer
  */
+
+use MediaWiki\MediaWikiServices;
 
 class WebInstallerName extends WebInstallerPage {
 
@@ -26,10 +28,8 @@ class WebInstallerName extends WebInstallerPage {
 	 */
 	public function execute() {
 		$r = $this->parent->request;
-		if ( $r->wasPosted() ) {
-			if ( $this->submit() ) {
-				return 'continue';
-			}
+		if ( $r->wasPosted() && $this->submit() ) {
+			return 'continue';
 		}
 
 		$this->startForm();
@@ -100,11 +100,13 @@ class WebInstallerName extends WebInstallerPage {
 				'label' => 'config-admin-email',
 				'help' => $this->parent->getHelpBox( 'config-admin-email-help' )
 			] ) .
+			// @phan-suppress-next-line SecurityCheck-DoubleEscaped taint cannot track the helpbox from the rest
 			$this->parent->getCheckBox( [
 				'var' => '_Subscribe',
 				'label' => 'config-subscribe',
 				'help' => $this->parent->getHelpBox( 'config-subscribe-help' )
 			] ) .
+			// @phan-suppress-next-line SecurityCheck-DoubleEscaped taint cannot track the helpbox from the rest
 			$this->parent->getCheckBox( [
 				'var' => 'wgPingback',
 				'label' => 'config-pingback',
@@ -115,7 +117,7 @@ class WebInstallerName extends WebInstallerPage {
 				'value' => true,
 			] ) .
 			$this->getFieldsetEnd() .
-			$this->parent->getInfoBox( wfMessage( 'config-almost-done' )->text() ) .
+			$this->parent->getInfoBox( wfMessage( 'config-almost-done' )->plain() ) .
 			// getRadioSet() builds a set of labeled radio buttons.
 			// For grep: The following messages are used as the item labels:
 			// config-optional-continue, config-optional-skip
@@ -186,8 +188,7 @@ class WebInstallerName extends WebInstallerPage {
 		}
 
 		// Make sure it won't conflict with any existing namespaces
-		global $wgContLang;
-		$nsIndex = $wgContLang->getNsIndex( $name );
+		$nsIndex = MediaWikiServices::getInstance()->getContentLanguage()->getNsIndex( $name );
 		if ( $nsIndex !== false && $nsIndex !== NS_PROJECT ) {
 			$this->parent->showError( 'config-ns-conflict', $name );
 			$retVal = false;
@@ -223,7 +224,7 @@ class WebInstallerName extends WebInstallerPage {
 			$status = $upp->checkUserPasswordForGroups(
 				$user,
 				$pwd,
-				[ 'bureaucrat', 'sysop' ]  // per Installer::createSysop()
+				[ 'bureaucrat', 'sysop', 'interface-admin' ]  // per Installer::createSysop()
 			);
 			$valid = $status->isGood() ? true : $status->getMessage();
 		} else {

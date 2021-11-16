@@ -10,7 +10,7 @@
 	"license-name": "GPL-2.0-or-later",
 	"type": "antispam",
 	"requires": {
-		"MediaWiki": ">= 1.29.0"
+		"MediaWiki": ">= 1.35.0"
 	},
 	"GroupPermissions": {
 		"sysop": {
@@ -33,6 +33,12 @@
 		"titleblacklist/*": "LogFormatter"
 	},
 	"GrantPermissions": {
+		"createaccount": {
+			"tboverride-account": true
+		},
+		"editprotected": {
+			"tboverride": true
+		},
 		"viewrestrictedlogs": {
 			"titleblacklistlog": true
 		}
@@ -42,7 +48,8 @@
 	},
 	"MessagesDirs": {
 		"TitleBlacklist": [
-			"i18n"
+			"i18n",
+			"i18n/api"
 		]
 	},
 	"AutoloadClasses": {
@@ -60,7 +67,24 @@
 			"dependencies": [
 				"mediawiki.api"
 			],
-			"targets": [ "desktop", "mobile" ]
+			"targets": [
+				"desktop",
+				"mobile"
+			]
+		},
+		"ext.titleblacklist.visualEditor": {
+			"scripts": "ve-titleblacklist/ve.init.mw.TitleBlacklistSaveErrorHandler.js",
+			"targets": [
+				"desktop",
+				"mobile"
+			]
+		}
+	},
+	"attributes": {
+		"VisualEditor": {
+			"PluginModules": [
+				"ext.titleblacklist.visualEditor"
+			]
 		}
 	},
 	"ResourceFileModulePaths": {
@@ -69,34 +93,44 @@
 	},
 	"Hooks": {
 		"getUserPermissionsErrorsExpensive": [
-			"TitleBlacklistHooks::userCan"
+			"TitleBlacklistHooks::onUserCan"
 		],
 		"TitleGetEditNotices": [
-			"TitleBlacklistHooks::displayBlacklistOverrideNotice"
+			"TitleBlacklistHooks::onDisplayBlacklistOverrideNotice"
 		],
 		"MovePageCheckPermissions": [
 			"TitleBlacklistHooks::onMovePageCheckPermissions"
 		],
 		"EditFilter": [
-			"TitleBlacklistHooks::validateBlacklist"
+			"TitleBlacklistHooks::onValidateBlacklist"
 		],
-		"PageContentSaveComplete": [
-			"TitleBlacklistHooks::clearBlacklist"
+		"PageSaveComplete": [
+			"TitleBlacklistHooks::onClearBlacklist"
 		],
 		"ScribuntoExternalLibraries": [
-			"TitleBlacklistHooks::scribuntoExternalLibraries"
+			"TitleBlacklistHooks::onScribuntoExternalLibraries"
 		]
 	},
 	"config": {
-		"TitleBlacklistSources": [],
-		"TitleBlacklistUsernameSources": "*",
-		"TitleBlacklistLogHits": false,
-		"TitleBlacklistCaching": {
-			"warningchance": 100,
-			"expiry": 900,
-			"warningexpiry": 600
+		"TitleBlacklistSources": {
+			"value": []
 		},
-		"TitleBlacklistBlockAutoAccountCreation": true
+		"TitleBlacklistUsernameSources": {
+			"value": "*"
+		},
+		"TitleBlacklistLogHits": {
+			"value": false
+		},
+		"TitleBlacklistCaching": {
+			"value": {
+				"warningchance": 100,
+				"expiry": 900,
+				"warningexpiry": 600
+			}
+		},
+		"TitleBlacklistBlockAutoAccountCreation": {
+			"value": true
+		}
 	},
 	"AuthManagerAutoConfig": {
 		"preauth": {
@@ -105,5 +139,5 @@
 			}
 		}
 	},
-	"manifest_version": 1
+	"manifest_version": 2
 }
