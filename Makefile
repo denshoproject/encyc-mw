@@ -94,7 +94,7 @@ install-encyc-mw:
 	apt-get --assume-yes install imagemagick libjpeg-turbo-progs memcached nginx php-pear php-cgi php-cli php-fpm php-mbstring php-mysql tidy
 # images dir
 	-mkdir $(IMAGES_DIR)
-	chown -R root.www-data $(IMAGES_DIR)
+	chown -R www-data:www-data $(IMAGES_DIR)
 	chmod 775 $(IMAGES_DIR)
 
 test-encyc-mw:
