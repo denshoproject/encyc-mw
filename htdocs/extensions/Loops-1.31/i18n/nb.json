@@ -1,9 +1,0 @@
-{
-	"@metadata": {
-		"authors": [
-			"Jon Harald Søby"
-		]
-	},
-	"loops-desc": "Parserfunksjoner for å utføre sløyfer",
-	"loops_max": "Maksimalt antall sløyfer har blitt utført"
-}
