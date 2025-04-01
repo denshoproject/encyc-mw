@@ -7,11 +7,6 @@ SHELL = /bin/bash
 APP_VERSION := $(shell cat VERSION)
 GIT_SOURCE_URL=https://github.com/densho/encyc-mw
 
-PHP_VERSION=7.4
-ifeq ($(DEBIAN_CODENAME), buster)
-	PHP_VERSION=7.3
-endif
-
 INSTALL_BASE=/opt
 INSTALLDIR=$(INSTALL_BASE)/encyc-mw
 IMAGES_DIR=$(INSTALLDIR)/htdocs/images
@@ -28,6 +23,14 @@ DEBIAN_CODENAME := $(shell lsb_release -sc)
 DEBIAN_RELEASE := $(shell lsb_release -sr)
 # Sortable major version tag e.g. deb8
 DEBIAN_RELEASE_TAG = deb$(shell lsb_release -sr | cut -c1)
+
+PHP_VERSION=7.4
+ifeq ($(DEBIAN_CODENAME), buster)
+	PHP_VERSION=7.3
+endif
+ifeq ($(DEBIAN_CODENAME), bookworm)
+	PHP_VERSION=8.2
+endif
 
 TGZ_BRANCH := $(shell python3 bin/package-branch.py)
 TGZ_FILE=$(APP)_$(APP_VERSION)
