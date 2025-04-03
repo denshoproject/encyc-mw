@@ -7,6 +7,16 @@ SHELL = /bin/bash
 APP_VERSION := $(shell cat VERSION)
 GIT_SOURCE_URL=https://github.com/densho/encyc-mw
 
+INSTALL_BASE=/opt
+INSTALLDIR=$(INSTALL_BASE)/encyc-mw
+IMAGES_DIR=$(INSTALLDIR)/htdocs/images
+
+CONF_BASE=/etc/encyc
+CONF_PRODUCTION=$(CONF_BASE)/LocalSettings.php
+
+NGINX_CONF=/etc/nginx/sites-available/encycmw.conf
+NGINX_CONF_LINK=/etc/nginx/sites-enabled/encycmw.conf
+
 # Release name e.g. jessie
 DEBIAN_CODENAME := $(shell lsb_release -sc)
 # Release numbers e.g. 8.10
@@ -18,38 +28,30 @@ PHP_VERSION=7.4
 ifeq ($(DEBIAN_CODENAME), buster)
 	PHP_VERSION=7.3
 endif
-
-INSTALL_BASE=/opt
-INSTALLDIR=$(INSTALL_BASE)/encyc-mw
-IMAGES_DIR=$(INSTALLDIR)/htdocs/images
-
-CONF_BASE=/etc/encyc
-CONF_PRODUCTION=$(CONF_BASE)/LocalSettings.php
-
-NGINX_CONF=/etc/nginx/sites-available/encycmw.conf
-NGINX_CONF_LINK=/etc/nginx/sites-enabled/encycmw.conf
+ifeq ($(DEBIAN_CODENAME), bookworm)
+	PHP_VERSION=8.2
+endif
 
 TGZ_BRANCH := $(shell python3 bin/package-branch.py)
 TGZ_FILE=$(APP)_$(APP_VERSION)
 TGZ_DIR=$(INSTALLDIR)/$(TGZ_FILE)
 TGZ_MW=$(TGZ_DIR)/encyc-mw
 
-DEB_BRANCH := $(shell git rev-parse --abbrev-ref HEAD | tr -d _ | tr -d -)
+# Adding '-rcN' to VERSION will name the package "ddrlocal-release"
+# instead of "ddrlocal-BRANCH"
+DEB_BRANCH := $(shell python3 bin/package-branch.py)
 DEB_ARCH=amd64
-DEB_NAME_JESSIE=$(APP)-$(DEB_BRANCH)
-DEB_NAME_STRETCH=$(APP)-$(DEB_BRANCH)
-DEB_NAME_BUSTER=$(APP)-$(DEB_BRANCH)
 DEB_NAME_BULLSEYE=$(APP)-$(DEB_BRANCH)
+DEB_NAME_BOOKWORM=$(APP)-$(DEB_BRANCH)
+DEB_NAME_TRIXIE=$(APP)-$(DEB_BRANCH)
 # Application version, separator (~), Debian release tag e.g. deb8
 # Release tag used because sortable and follows Debian project usage.
-DEB_VERSION_JESSIE=$(APP_VERSION)~deb8
-DEB_VERSION_STRETCH=$(APP_VERSION)~deb9
-DEB_VERSION_BUSTER=$(APP_VERSION)~deb9
-DEB_VERSION_BULLSEYE=$(APP_VERSION)~deb9
-DEB_FILE_JESSIE=$(DEB_NAME_JESSIE)_$(DEB_VERSION_JESSIE)_$(DEB_ARCH).deb
-DEB_FILE_STRETCH=$(DEB_NAME_STRETCH)_$(DEB_VERSION_STRETCH)_$(DEB_ARCH).deb
-DEB_FILE_BUSTER=$(DEB_NAME_BUSTER)_$(DEB_VERSION_BUSTER)_$(DEB_ARCH).deb
+DEB_VERSION_BULLSEYE=$(APP_VERSION)~deb11
+DEB_VERSION_BOOKWORM=$(APP_VERSION)~deb12
+DEB_VERSION_TRIXIE=$(APP_VERSION)~deb13
 DEB_FILE_BULLSEYE=$(DEB_NAME_BULLSEYE)_$(DEB_VERSION_BULLSEYE)_$(DEB_ARCH).deb
+DEB_FILE_BOOKWORM=$(DEB_NAME_BOOKWORM)_$(DEB_VERSION_BOOKWORM)_$(DEB_ARCH).deb
+DEB_FILE_TRIXIE=$(DEB_NAME_TRIXIE)_$(DEB_VERSION_TRIXIE)_$(DEB_ARCH).deb
 DEB_VENDOR=Densho.org
 DEB_MAINTAINER=<geoffrey.jost@densho.org>
 DEB_DESCRIPTION=Encyclopedia Mediawiki
@@ -152,25 +154,24 @@ tgz:
 install-fpm:
 	@echo "install-fpm ------------------------------------------------------------"
 	apt-get install --assume-yes ruby ruby-dev rubygems build-essential
-	gem install --no-ri --no-rdoc fpm
+	gem install --no-document fpm
 
-
-# http://fpm.readthedocs.io/en/latest/
 # https://stackoverflow.com/questions/32094205/set-a-custom-install-directory-when-making-a-deb-package-with-fpm
 # https://brejoc.com/tag/fpm/
 deb: deb-bullseye
 
-deb-stretch:
+deb-bullseye:
 	@echo ""
-	@echo "DEB packaging (stretch) ------------------------------------------------"
-	-rm -Rf $(DEB_FILE_STRETCH)
+	@echo "FPM packaging (bullseye) -----------------------------------------------"
+	-rm -Rf $(DEB_FILE_BULLSEYE)
+# Make package
 	fpm   \
 	--verbose   \
 	--input-type dir   \
 	--output-type deb   \
-	--name $(DEB_NAME_STRETCH)   \
-	--version $(DEB_VERSION_STRETCH)   \
-	--package $(DEB_FILE_STRETCH)   \
+	--name $(DEB_NAME_BULLSEYE)   \
+	--version $(DEB_VERSION_BULLSEYE)   \
+	--package $(DEB_FILE_BULLSEYE)   \
 	--url "$(GIT_SOURCE_URL)"   \
 	--vendor "$(DEB_VENDOR)"   \
 	--maintainer "$(DEB_MAINTAINER)"   \
@@ -196,17 +197,18 @@ deb-stretch:
 	README.rst=$(DEB_BASE)   \
 	VERSION=$(DEB_BASE)
 
-deb-buster:
+deb-bookworm:
 	@echo ""
-	@echo "DEB packaging (buster) -------------------------------------------------"
-	-rm -Rf $(DEB_FILE_BUSTER)
+	@echo "FPM packaging (bookworm) -----------------------------------------------"
+	-rm -Rf $(DEB_FILE_BOOKWORM)
+# Make package
 	fpm   \
 	--verbose   \
 	--input-type dir   \
 	--output-type deb   \
-	--name $(DEB_NAME_BUSTER)   \
-	--version $(DEB_VERSION_BUSTER)   \
-	--package $(DEB_FILE_BUSTER)   \
+	--name $(DEB_NAME_BOOKWORM)   \
+	--version $(DEB_VERSION_BOOKWORM)   \
+	--package $(DEB_FILE_BOOKWORM)   \
 	--url "$(GIT_SOURCE_URL)"   \
 	--vendor "$(DEB_VENDOR)"   \
 	--maintainer "$(DEB_MAINTAINER)"   \
@@ -233,17 +235,18 @@ deb-buster:
 	README.rst=$(DEB_BASE)   \
 	VERSION=$(DEB_BASE)
 
-deb-bullseye:
+deb-trixie:
 	@echo ""
-	@echo "DEB packaging (bullseye) -------------------------------------------------"
-	-rm -Rf $(DEB_FILE_BULLSEYE)
+	@echo "FPM packaging (trixie) -----------------------------------------------"
+	-rm -Rf $(DEB_FILE_TRIXIE)
+# Make package
 	fpm   \
 	--verbose   \
 	--input-type dir   \
 	--output-type deb   \
-	--name $(DEB_NAME_BULLSEYE)   \
-	--version $(DEB_VERSION_BULLSEYE)   \
-	--package $(DEB_FILE_BULLSEYE)   \
+	--name $(DEB_NAME_TRIXIE)   \
+	--version $(DEB_VERSION_TRIXIE)   \
+	--package $(DEB_FILE_TRIXIE)   \
 	--url "$(GIT_SOURCE_URL)"   \
 	--vendor "$(DEB_VENDOR)"   \
 	--maintainer "$(DEB_MAINTAINER)"   \
